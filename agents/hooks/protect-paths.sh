@@ -9,7 +9,7 @@
 INPUT=$(cat /dev/stdin)
 path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
-# 用换行分隔的受保护前缀（每条一行，如 src/gen/、v1/、src/test/**/ReviewServiceSm2ConfigTest.java）
+# 用换行分隔的受保护前缀（每条一行，如 src/gen/、v1/、tests/**/fixtures/）
 PROTECTED="$PWD/protected-paths.txt"
 if [ -f "$PROTECTED" ]; then
   while IFS= read -r line; do

@@ -25,7 +25,7 @@ AINative/
 │   ├── review.md.template     # 阶段4 测试 — 审查指令（REVIEW.md）
 │   ├── bands.yaml.template    # 阶段6 运维 — 监控控制带
 │   └── incident.md.template   # 阶段6 运维 — 事故记录（回环起点）
-├── examples/             # 用真实项目走通全流程的完整示例
+├── examples/             # 自包含示例：走通全流程的完整案例（开市前简报）
 ├── agents/
 │   ├── skills/           # 建议性机构知识（需一致性执行）→ SKILL.md
 │   └── hooks/            # 确定性护栏/门禁（几乎不可能违规）→ *.sh
@@ -45,7 +45,7 @@ AINative/
 ## 状态
 
 - [x] 台阶 0：骨架 + 方法论文档 + 六份产物模板
-- [x] 台阶 1：用真实项目（记单词 App）走通 规划→设计→构建→测试 （`examples/f5-review-scheduling/`）
+- [x] 台阶 1：用一个自包含案例（炒股专家·开市前简报）走通 规划→设计→构建→测试 （`examples/premarket-brief/`）
 - [x] 台阶 2：agents/skills（建议性管控）+ agents/hooks（确定性护栏）+ 注册映射
 - [x] 台阶 3：evals + CI 门禁 + infra/bands.yaml（持续回归 + 监控控制带）
 - [x] 台阶 4：转译为 DSH agent preset（`ai-native-sdlc`，见 `docs/dsh-preset.md`）

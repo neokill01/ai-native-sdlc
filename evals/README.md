@@ -25,7 +25,7 @@
 ```bash
 # 跑全部 eval（有 verify 的跑命令判定；无 verify 的列出 checks 供人工审）
 ./evals/check.sh           # 默认扫 evals/*.json
-./evals/check.sh evals/sm2-configurable.json   # 跑单个
+./evals/check.sh evals/premarket-brief.json   # 跑单个
 ```
 
 `check.sh` 返回非零即视为有 eval 失败（可供 CI 判定）。

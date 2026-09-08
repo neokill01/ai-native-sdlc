@@ -1,0 +1,14 @@
+{
+  "id": "premarket-brief",
+  "description": "开市前简报：分析摘要与 CLI 必须在测试/运行下通过（示例自包含、纯标准库、离线可跑）",
+  "prompt": "实现一个开市前市场简报工具：数据源经 Source 接口抽象（附带确定性样例源），build_brief 产出风向/显著异动/高影响事件/重点新闻/自选股提示；纯标准库、无副作用；tests 全绿；python3 -m premarket_brief 输出完整简报。",
+  "checks": [
+    "数据模型与 change_pct 计算正确（prev_close<=0 不除零）",
+    "Source 接口 + SampleSource 确定性 + CompositeSource 合并去重",
+    "build_brief 的风向/异动阈值/高影响过滤/重点新闻排序/自选股阈值正确",
+    "阈值传入 <=0 时回退默认，不产生空结果",
+    "CLI 输出含五块内容的 Markdown 简报",
+    "tests 全绿且纯标准库可跑"
+  ],
+  "verify": "cd examples/premarket-brief && python3 -m unittest discover -s tests >/dev/null 2>&1 && python3 -m premarket_brief --day 2026-09-08 >/dev/null 2>&1"
+}
