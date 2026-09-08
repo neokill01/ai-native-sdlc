@@ -63,6 +63,39 @@ python3 -m premarket_brief --day 2026-09-08
 - NDX (US) -2.60%
 ```
 
+## 完整流程实录（本次如何跑通）
+
+下面是本案例按 AI-Native SDLC 门禁实际走过的路径与真实命令/输出：
+
+```
+① 规划   → intent.md   （炒股专家视角：痛点/期望/成功标准）✅
+   门禁：人审 → 接受
+② 设计   → spec.md     （数据模型 / Source 接口 / FR-1~7，标注冲突点）✅
+   门禁：人审 → 决定进入构建
+③ 构建   → plan.md     （变更文件 / 实施顺序=测试先行 / 风险）✅
+   门禁：人审 → 接受执行
+④ 构建   → 先写 tests  定义契约（change_pct / Source / build_brief 判定）
+⑤ 测试   → 实现后跑测试 → 20 用例全绿   ▼ 真实输出
+⑥ 交付   → python3 -m premarket_brief 输出完整简报 → git commit
+```
+
+**门禁流转的核心**：`intent`/`spec`/`plan` 三份产物**先于任何代码**提交并经过人审；拿到接受后才进入"构建→测试"（agent 自闭环），最后以真实命令 + 全绿测试 + CLI 输出回到人的视野。
+
+**测试真实输出（`python3 -m unittest discover -s tests`）**：
+
+```
+Ran 20 tests in 0.001s   →  OK
+```
+
+（各用例：`test_change_pct_*`、`test_*_contract`、`test_deterministic`、`test_merge_and_dedupe`、`test_union_keeps_distinct`、`test_stance_*`、`test_big_moves_threshold`、`test_high_impact_filtered`、`test_top_headlines_sentiment_ordered`、`test_watchlist_alerts_threshold`、`test_threshold_le_zero_falls_back`、`test_build_brief_from_sample`）
+
+**交付命令与提交**：
+
+```bash
+python3 -m premarket_brief --day 2026-09-08   # 输出见上方"示例输出"
+git add examples/premarket-brief && git commit -m "示例: 炒股专家·开市前简报（intent/spec/plan + 实现 + 20 用例全绿）"
+```
+
 ## 这个流程跑通了什么
 
 1. **intent → spec → plan 先于代码**（需求/设计评审在编码前，改方向只改文档）。
