@@ -1,0 +1,29 @@
+# Review instructions   <!-- 审查指令，放仓库根目录：REVIEW.md -->
+
+<!--
+技术负责人把审查策略写成这份文件，供 agent 做 PR 审查（也供人审参考）。
+把组织关心的维度分成几遍（pass），每遍的结论打上 pass 标签。
+重点：agent 既当审查者（按此审查 PR），也当被审查者（处理自己 PR 上的评论）。
+同一错误第二次被审查标出时，纠正就写进 CLAUDE.md/AGENT.md。
+-->
+
+## Passes / 扫描维度
+分几遍扫，每一条 findings 都带上 pass 标签：
+
+- **Bugs**: 逻辑错误、边界/角落 case、细微回归
+- **Security**: 注入风险、认证/授权缺口、PII 泄漏（日志/报错）
+- **Compliance**: 变更是否符合 spec.md / plan.md 与我们的设计原则
+
+## What Important means / 什么算 Important
+只有会破坏行为、泄漏数据、或违背策略的才标 **Important**。
+风格与命名属于 **Nit**。
+
+## Cap the nits / Nit 上限
+每次审查最多报 **5 条** nit；其余只给个计数。
+
+## Do not report / 不报什么
+`src/gen/` 之类的生成文件，以及 CI 已经强制的东西，不要重复报。
+
+## Roles / 角色
+- 审查者（agent/人）：按上述维度审，结论写入 PR。
+- 被审查者（agent）：处理自己 PR 上的评论并推送修复；升级点标 Important。

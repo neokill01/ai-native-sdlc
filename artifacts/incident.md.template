@@ -1,0 +1,36 @@
+# Incident: <一句话事件描述>   <!-- Incident record / 事故记录 -->
+
+**Stage / 阶段**: 6 运维 (Ops, 闭合回环) · **Status / 状态**: open | investigating | mitigated | closed
+**Detected at / 发现时间**: <YYYY-MM-DD HH:mm> · **Metric / 指标**: <哪个指标，落在哪个 σ 档>
+**Source / 来源**: <监控控制带 (bands.yaml) | Claude Tag / 频道 | 人工上报>
+
+<!--
+这是回环的起点：事故记录写清楚，随后按第一阶段格式转成 intent.md（异常+证据+预期结果+受影响系统+待答问题），
+再流经 需求→计划→构建→测试→审查 阶段。每一个生产事故都变成一个 eval 回归测试，永久留在套件里。
+-->
+
+## 异常与证据 / Anomaly & evidence
+<发生了什么，观察到什么指标/日志，时间窗口。>
+
+## 预期结果 / Expected
+<正常运行时应是什么样。>
+
+## 影响系统 / Affected systems
+<哪些服务/模块/用户受影响，影响面。>
+
+## 根因假设 / Hypotheses
+<暂定的原因，待验证。>
+
+## 待答问题 / Open questions
+- <仍不确定、需要进一步确认的。>
+
+## 处置与后续 / Resolution & follow-up
+- [ ] 立即缓解 / rollback 是否已触发
+- [ ] 是否有对应的 eval 需要新增（永久回归）
+- [ ] 是否升级给人（3σ 提案/人审）；升级点在何时
+
+<!-- 提交前自检 / Pre-commit check
+- [ ] 已按 intent.md 格式回写，可作为第一阶段输入
+- [ ] 事故已成 eval，进入持续回归套件
+- [ ] 复盘结论写进版本控制
+-->

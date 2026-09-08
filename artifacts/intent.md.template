@@ -1,0 +1,37 @@
+# Intent: <一句话，想要什么结果>   <!-- Intent: <one-line desired outcome> -->
+
+**Stage / 阶段**: 1 规划 (Plan) · **Status / 状态**: draft
+**Author / 作者**: <你是谁，属于哪块> · **Date / 日期**: <YYYY-MM-DD>
+**Entry point / 入口**: [ ] 人的想法  [ ] 工单/需求  [ ] 告警/事故  ·  <!-- idea | ticket | incident -->
+
+<!--
+意图捕获是流程起点。把模糊想法写成一段"人能读、agent 也能读"的 Markdown。
+不要写得正式，写清楚以下五块即可；未定的地方留 open question。
+Intent.md is the entry point. Capture the idea in a human-and-agent-readable form.
+-->
+
+## 问题 / Problem
+<用你自己的话描述：现在遇到了什么，痛点在哪。不需要技术语言。>
+
+## 期望结果 / Proposed outcome
+<希望用户/系统最终得到什么。一句能验证的话。>
+
+## 受影响用户与系统 / Affected users & systems
+<谁会被影响：用户角色、相关模块/团队、依赖的接口或数据。>
+
+## 约束 / Constraints
+<硬性边界：不引入新的 PII、只复用现有认证、性能阈值、不可变更的冻结模块等。>
+
+## 成功标准 / Success
+<怎样算成功？可测的一条：如"用户能在门户看到订单状态、下一步和预计时间"。>
+
+## 待定问题 / Open questions
+- <还需要确认的事，例如：第三方是否也要有权限？>
+
+<!-- 提交前自检 / Pre-commit check
+- [ ] 已用大白话讲清问题，无需看代码也能懂
+- [ ] 期望结果可验证（有"怎样算成功"）
+- [ ] 约束列清楚，冲突点已标注（留给 spec 阶段消解）
+- [ ] 作者 + 时间戳 + 修订历史会随 commit 进入 git 历史
+（接受 = 合并此 PR / 关闭审查；拒绝 = 关闭审查并写明理由）
+-->

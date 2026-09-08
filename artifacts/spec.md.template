@@ -1,0 +1,46 @@
+# Spec: <功能名>   <!-- Requirements & Design Spec -->
+
+**Stage / 阶段**: 2 设计 (Design) · **Status / 状态**: draft
+**From**: <链接到已通过的 intent.md> · **Author**: <人及其角色> · **Date / 日期**: <YYYY-MM-DD>
+**SPOC / 责任人**: <产品负责人，审查但不写这份 spec>
+
+<!--
+产品负责人批准 intent 后，agent 拿着通过的 intent.md 生成这份需求+设计规格。
+人负责"审查这份规格"，而不是"写它"。规格要能直接交给工程团队做方案。
+人决定是否进入构建阶段（高风险时咨询技术负责人）——这个决定始终由人做。
+-->
+
+## 目标与范围 / Goal & scope
+<这段意图要达成什么，明确"做什么 / 不做什么"。>
+
+## 用户旅程 / User journey
+<用户如何到达并完成这件事：入口 → 动作 → 反馈。>
+
+## 功能需求 / Functional requirements
+- FR-1: <用可验收的措辞写需求>
+- FR-2: <…>
+
+## 非功能约束 / Non-functional constraints
+- 性能: <阈值，如 50 rps、P95 < 200ms>
+- 安全: <认证/授权要求、数据分级>
+- 合规/UX: <品牌规范、可用性要求>
+
+## 数据 & 接口契约 / Data & API contract
+<涉及的表结构变更、接口路径、请求/响应 schema、错误码。>
+
+## 边界与例外 / Edge cases & exceptions
+<空态、权限不足、外部依赖失败、并发。>
+
+## 关注点 / Areas of concern
+- <尤其是冲突的策略点，spec 阶段就标出，不等到审查才发现>
+- [ ] 与品牌/安全/合规/UX 现有规范是否冲突？冲突点标注在此。
+
+## 端到端验证标准 / Done criteria
+<验收清单：哪些测试通过、哪些截图/证据达成，才算 spec 达成。>
+
+<!-- 提交前自检 / Pre-commit check
+- [ ] 基于已通过的 intent.md，而非凭空书写
+- [ ] 关注点已标注，且已与对应策略负责人先行消解
+- [ ] 工程团队可据此做 plan（无需再来问需求）
+- [ ] spec + 生成它的 prompt + 生效的 skill 版本 一并入版本控制
+--> 

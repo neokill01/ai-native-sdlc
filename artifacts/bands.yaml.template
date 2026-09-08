@@ -1,0 +1,29 @@
+# bands.yaml  ·  监控控制带 / Monitoring control bands
+# 第六阶段（运维与闭环）用：确定性脚本按此控制带调用 agent。
+# 检测层完全确定性（不涉及模型），只在分级响应里调用 agent。
+
+metric: <metric_name>          # 例：ci_test_failure_rate / deploy_5xx_rate / pr_cycle_time
+baseline: rolling_30d          # 滚动基线窗口
+rules: western_electric        # 检测方法：Western Electric 规则等
+
+tiers:
+  1sigma:
+    action: log                # 只记日志
+    # 2sigma / 3sigma 示例见下；按需启用（打开缩进并填写）
+  2sigma:
+    action: diagnose           # 只读诊断
+    tools:
+      - Read
+      - Grep
+      - "Bash(gh run view *)"
+  3sigma:
+    action: propose            # 可行动，但只能走受控路由
+    routes:
+      - pull_request           # 开 PR 进审查门禁
+      - runbook:rollback-deploy # 触发预批准的 runbook
+
+# 说明 / Notes
+# - 1σ 只记日志；2σ 调用 agent 只读诊断；3σ 可行动但只能通过 PR 或预批准 runbook。
+# - agent 把诊断按 intent.md 的格式写成"异常 + 证据 + 预期结果 + 受影响系统 + 待答问题"，
+#   从这就回到第一阶段，循环自我喂养。
+# - 生产控制带被突破且命中的是"发版后短时间内"时，agent 优先触发回滚而非新改。
