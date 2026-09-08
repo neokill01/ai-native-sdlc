@@ -45,7 +45,7 @@ AINative/
 ## 状态
 
 - [x] 台阶 0：骨架 + 方法论文档 + 六份产物模板
-- [ ] 台阶 1：用真实项目（记单词 App）走通 规划→设计→构建→测试
+- [x] 台阶 1：用真实项目（记单词 App）走通 规划→设计→构建→测试 （`examples/f5-review-scheduling/`）
 - [ ] 台阶 2：agents/skills + agents/hooks 护栏
 - [ ] 台阶 3：evals + CI 门禁 + infra/bands.yaml
 - [ ] 台阶 4：转译为 DSH agent preset / Cordis 插件工作台
