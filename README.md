@@ -48,6 +48,6 @@ AINative/
 - [x] 台阶 1：用真实项目（记单词 App）走通 规划→设计→构建→测试 （`examples/f5-review-scheduling/`）
 - [x] 台阶 2：agents/skills（建议性管控）+ agents/hooks（确定性护栏）+ 注册映射
 - [x] 台阶 3：evals + CI 门禁 + infra/bands.yaml（持续回归 + 监控控制带）
-- [ ] 台阶 4：转译为 DSH agent preset / Cordis 插件工作台
+- [x] 台阶 4：转译为 DSH agent preset（`ai-native-sdlc`，见 `docs/dsh-preset.md`）
 
 > 基于 Anthropic Applied AI 团队的真实最佳实践改编；本仓库聚焦"方法论 + 门禁 + 产物"，具体工具映射见 `docs/playbook.md` 第 4 节。
