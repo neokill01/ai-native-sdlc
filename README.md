@@ -46,7 +46,7 @@ AINative/
 
 - [x] 台阶 0：骨架 + 方法论文档 + 六份产物模板
 - [x] 台阶 1：用真实项目（记单词 App）走通 规划→设计→构建→测试 （`examples/f5-review-scheduling/`）
-- [ ] 台阶 2：agents/skills + agents/hooks 护栏
+- [x] 台阶 2：agents/skills（建议性管控）+ agents/hooks（确定性护栏）+ 注册映射
 - [ ] 台阶 3：evals + CI 门禁 + infra/bands.yaml
 - [ ] 台阶 4：转译为 DSH agent preset / Cordis 插件工作台
 
