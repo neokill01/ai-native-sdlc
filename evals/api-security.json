@@ -1,0 +1,13 @@
+{
+  "id": "api-security",
+  "description": "新建/修改 API 端点时必须符合 API 安全标准（secure-api-review skill）",
+  "prompt": "为「给一个新增了复习结果字段的端点」补齐安全要求：确保每个端点都要求网关 JWT；管理端 /api/admin/** 仅 ADMIN；校验请求体、拒绝未知字段；对资源参数做归属校验防 IDOR；状态变更端点发审计事件；PII 字段不进日志/报错。",
+  "checks": [
+    "端点无匿名路由（除 /health 与登录外）",
+    "请求体按 OpenAPI schema 校验，拒绝未知字段",
+    "资源参数有归属校验（学生只能操作自己资源，防 IDOR）",
+    "状态变更端点发出审计事件（actor/action/entity/timestamp）",
+    "标记为 PII 的字段不出现在日志/报错中",
+    "管理端接口仅 ADMIN 可访问"
+  ]
+}

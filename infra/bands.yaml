@@ -1,0 +1,30 @@
+# bands.yaml  ·  监控控制带 / Monitoring control bands
+# 第六阶段（运维与闭环）：确定性脚本按此控制带调用 agent。
+# 检测层完全确定性（均值+标准差 / Western Electric），只在分级响应里调用 agent。
+
+metric: ci_test_failure_rate        # 例：CI 测试失败率 / 或 deploy_5xx_rate / pr_cycle_time
+baseline: rolling_30d
+rules: western_electric
+
+tiers:
+  1sigma:
+    action: log                      # 只记日志，不打扰人
+  2sigma:
+    action: diagnose                # 只读诊断，不改动
+    tools:
+      - Read
+      - Grep
+      - "Bash(gh run view *)"
+  3sigma:
+    action: propose                  # 可行动，但只能走受控路由
+    routes:
+      - pull_request                 # 开 PR 进审查门禁
+      - runbook:rollback-deploy      # 触发预批准的回滚 runbook
+
+# 分级背后到 agent 的响应脚本（台阶4 会把它转成宿主/预定动作）
+# 1σ  → 记日志
+# 2σ  → agent 只读诊断：定位最可能原因、判断是否 flaky、给三行摘要到 PR 线程（按 intent.md 格式写 incident）
+# 3σ  → agent 写 intent.md（异常+证据+预期+受影响系统+待答问题），走 pull_request / 预授权 runbook
+#
+# 注意：发版后短时间内命中 3σ 时，agent 优先触发回滚而非推新改。
+# 检测层不调用模型（确定性）；模型只在 2σ/3σ 的"诊断/提案"阶段被调用。

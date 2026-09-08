@@ -1,0 +1,25 @@
+name: agent-evals
+
+# 持续回归评估（测试阶段 stage-gate）
+# 触发：改动 agent 配置/机构知识/评估套件时跑一遍；并定时例检。
+# 说明：本工作流在 AINative 仓库跑 本仓库自包含 的 eval（evals/*.json，scope=repo）。
+#       带 "project" 的 eval（如 sm2-configurable 指向其他仓库）由该仓库自身的 CI 跑——本工作流会自动跳过，不会误判失败。
+
+on:
+  pull_request:
+    paths:
+      - 'AGENT.md'
+      - 'agents/**'
+      - 'evals/**'
+      - 'docs/playbook.md'
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run eval suite
+        run: ./evals/check.sh

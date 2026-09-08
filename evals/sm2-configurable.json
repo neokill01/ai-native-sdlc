@@ -1,0 +1,13 @@
+{
+  "id": "sm2-configurable",
+  "description": "SM-2 复习调度参数必须读取 system_config(review)，不得硬编码（防复现台阶1的缺口）",
+  "prompt": "在一个 Java/Spring 服务里，SM-2 复习调度（首次答对→3天→7天→14天→第4次毕业，答错重置）要做到：参数从 system_config(key=review) 读取（sm2Intervals、graduationThreshold）；默认 [3,7,14]/4；后台改参数要立即生效；默认值路径行为不变。",
+  "checks": [
+    "review 服务改为读取 system_config(review)，无硬编码 INTERVALS/GRADUATE_STAGE",
+    "缺失/解析失败回退默认 [3,7,14]/4，且默认值有唯一来源",
+    "有测试证明『自定义配置驱动调度』（如 sm2Intervals=[2,5,10], graduationThreshold=3 → 首次答对 = +2 天）",
+    "默认配置下行为与旧逻辑逐位一致"
+  ],
+  "verify": "cd /Users/neo/workspace/中小学记单词APP/server && ./gradlew --offline test --tests '*ReviewServiceSm2ConfigTest' --tests '*Sm2SchedulerTest'",
+  "project": "vocab-app"
+}
