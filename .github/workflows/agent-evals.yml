@@ -6,6 +6,7 @@ name: agent-evals
 #       带 "project" 的 eval（指向其他仓库/项目）由该仓库自身的 CI 跑——本工作流会自动跳过，不会误判失败。
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'AGENT.md'
@@ -17,7 +18,7 @@ on:
 
 jobs:
   evals:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, Linux, X64, ai-native-ci]
     steps:
       - uses: actions/checkout@v4
 
