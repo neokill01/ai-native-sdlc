@@ -7,9 +7,9 @@ import { createHash, randomUUID } from 'node:crypto';
 const next = {
   created: ['intent_review'], intent_review: ['spec_review'],
   spec_review: ['plan_review'], plan_review: ['queued'],
-  queued: ['running'], running: ['verifying', 'failed', 'paused'],
-  verifying: ['completed', 'repairing', 'failed', 'paused'],
-  repairing: ['running', 'failed', 'paused'], paused: ['queued'],
+  queued: ['running', 'cancelled', 'failed'], running: ['verifying', 'failed', 'paused', 'cancelled'],
+  verifying: ['completed', 'repairing', 'failed', 'paused', 'cancelled'],
+  repairing: ['running', 'failed', 'paused', 'cancelled'], paused: ['queued', 'cancelled'],
 };
 const artifactKind = { intent_review: 'intent', spec_review: 'spec', plan_review: 'plan' };
 
@@ -47,10 +47,10 @@ export class TaskStore {
     try {
       const task = this.get(id);
       if (task.version !== version) throw new Error('Stale task version');
-      change(task);
+      const detail = change(task) ?? {};
       task.version++;
       this.db.prepare('UPDATE tasks SET version=?,data=? WHERE id=? AND version=?').run(task.version, JSON.stringify(task), id, version);
-      this.event(id, type, { version: task.version, status: task.status });
+      this.event(id, type, { ...detail, version: task.version, status: task.status });
       this.db.exec('COMMIT');
       return task;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
@@ -76,6 +76,7 @@ export class TaskStore {
       const kind = artifactKind[task.status];
       if (!kind || !task.artifacts[kind]) throw new Error('No artifact awaiting approval');
       task.approvals[kind] = { hash: task.artifacts[kind].hash, actor, at: new Date().toISOString() };
+      return { kind, ...task.approvals[kind] };
     });
   }
   verification(id, version, verdict, evidence) {
@@ -86,6 +87,13 @@ export class TaskStore {
       task.evidence = evidence;
     });
   }
+  checkpoint(id, version, detail) {
+    return this.mutate(id, version, 'run.checkpoint', task => {
+      if (!['running', 'verifying', 'repairing'].includes(task.status)) throw new Error('Not active');
+      task.checkpoint = { ...task.checkpoint, ...detail };
+      return { checkpoint: task.checkpoint };
+    });
+  }
   transition(id, version, status) {
     return this.mutate(id, version, 'task.transitioned', task => {
       if (!next[task.status]?.includes(status)) throw new Error('Invalid transition');
@@ -93,6 +101,7 @@ export class TaskStore {
       if (kind && (!task.artifacts[kind] || task.approvals[kind]?.hash !== task.artifacts[kind].hash)) throw new Error('Artifact approval required');
       if (status === 'running') {
         if (['intent', 'spec', 'plan'].some(k => !task.artifacts[k] || task.approvals[k]?.hash !== task.artifacts[k].hash)) throw new Error('Approved artifact chain required');
+        if (task.status === 'repairing') task.checkpoint = { deadline: task.checkpoint?.deadline };
         task.verification = 'not_run';
         delete task.evidence;
       }

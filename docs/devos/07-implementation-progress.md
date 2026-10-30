@@ -34,3 +34,14 @@ TaskStore 是可信内部领域模块，actor 和验证证据由调用者提供�
 2. 引入确定性 Runtime 测试适配器，验证有限编码/验证/修复循环和取消、超时、恢复语义。
 3. 接入受限工具网关、真实 Sandbox、成熟 Coding Harness；真实 Agent 任务成功后才统计 P1 完成度。
 4. 写权限恢复后推送当前分支、创建草稿 PR，再核实 CI；不自动合并 main。
+
+## 后续增量：确定性 Loop
+
+- 新增 runTask 编排器及 `npm run demo:loop`；执行→验证→有限修复可运行。
+- 支持 AbortSignal 取消、持久化 deadline、操作 pending/finished 检查点。
+- 不确定操作暂停；已完成操作恢复时不重复执行；验证阶段恢复只重跑可重复验证。
+- 审批历史事件新增 actor、kind、hash，修复先前仅快照保留的问题。
+- Node 核心测试扩展为 11 项并通过；六项门禁回归与既有示例评测通过，完整 eval 仍为 REVIEW。
+- 上一提交 c328faa 的远端 run 41000554611 两个 jobs 均 success；后续提交的 CI 需单独核验。
+
+仍仅为确定性原型，不代表真实模型自主开发成功。并发租约、强制进程终止、不确定副作用核对入口、费用预算和真实沙箱仍待实施。详见 packages/agent-core/README.md。
