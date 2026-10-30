@@ -9,10 +9,11 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "test": "node --test packages/agent-core/test/*.test.js",
+    "test": "node --test packages/*/test/*.test.js",
     "test:guards": "python3 -m unittest discover -s tests -v",
     "eval": "bash evals/check.sh",
-    "check": "node --check packages/agent-core/index.js && node --check packages/agent-core/loop.js && node --check packages/agent-core/demo.js",
-    "demo:loop": "node packages/agent-core/demo.js"
+    "check": "node --check packages/agent-core/index.js && node --check packages/agent-core/loop.js && node --check packages/agent-core/demo.js && node --check packages/tool-kit/index.js && node --check packages/agent-core/workspace-demo.js",
+    "demo:loop": "node packages/agent-core/demo.js",
+    "demo:workspace": "node packages/agent-core/workspace-demo.js"
   }
 }
