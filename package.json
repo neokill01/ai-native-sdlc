@@ -1,0 +1,13 @@
+{
+  "name": "agentic-devos",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "engines": {"node": ">=24.0.0"},
+  "scripts": {
+    "test": "node --test packages/agent-core/test/*.test.js",
+    "test:guards": "python3 -m unittest discover -s tests -v",
+    "eval": "bash evals/check.sh",
+    "check": "node --check packages/agent-core/index.js"
+  }
+}

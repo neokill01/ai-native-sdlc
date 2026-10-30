@@ -35,3 +35,11 @@
 - **PR 门禁**：改动 `AGENT.md`、`agents/**`、`evals/**`、`docs/playbook.md` 时在 CI 跑（见 `.github/workflows/agent-evals.yml`）。
 - **定时**：cron 例行回归，agent 配置一变就能发现问题。
 - **事故后**：新生产事故 → 新增对应 eval，永久回归。
+
+## 运行器修订
+
+需要 Bash 与 Python 3.9+，不再依赖 jq。定义损坏、文件缺失、无匹配定义返回非零。
+verify 使用 `bash -e -o pipefail`，请把预期非零命令放在 if 等显式条件中。
+含 project 的定义一律 SKIP，在目标仓库自己的 CI 运行；无 verify 的清单为 REVIEW。
+汇总包含 PASS/FAIL/REVIEW/SKIP；存在待审或跳过时 RESULT 为 REVIEW（退出 0），不等于全量通过。
+命令仍具备当前宿主权限，只允许运行可信 eval 定义。
