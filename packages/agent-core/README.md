@@ -83,7 +83,7 @@ ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列
 ```bash
 npm run devos -- create --db .devos/tasks.sqlite --title "Add a feature"
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind intent --file ./intent.md
-npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind spec --file ./spec.md
 npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind plan --file ./plan.json
@@ -97,4 +97,4 @@ Plan artifact 必须是 JSON，并提供已审批的 verification.commands，例
 ```json
 {"verification":{"commands":[{"name":"unit","command":["npm","test"],"timeout_ms":120000},{"name":"lint","command":["npm","run","lint"],"timeout_ms":120000}]}}
 ```
-可选传入 max-cost-usd 时，必须同时提供该模型当前的 input/output 每百万 token 价格；没有价格时仍按 token、轮数和命令超时预算停止。CLI 的 actor 是本地受信任调用者标签，不是多用户身份认证。数据库默认单主机 SQLite，不支持多主机并发部署。
+可选传入 max-cost-usd 时，必须同时提供该模型当前的 input/output 每百万 token 价格；没有价格时仍按 token、轮数和命令超时预算停止。CLI 的审批 actor 自动取自本机 OS 用户名与 UID，模型工具没有 approve/resolve 能力；这是单机 OS 身份边界，不是远程多用户认证。数据库默认单主机 SQLite，不支持多主机并发部署。

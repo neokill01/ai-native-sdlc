@@ -2,6 +2,7 @@
 import { readFile, mkdir, chmod } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { userInfo } from 'node:os';
 import { TaskStore, runTask, OpenAIResponsesRuntime, ApprovedPlanEvaluator } from './index.js';
 import { GitWorktreeManager } from './worktrees.js';
 import { DockerSandbox } from '../tool-kit/docker-sandbox.js';
@@ -51,10 +52,10 @@ Run requires OPENAI_API_KEY and DEVOS_OPENAI_MODEL (or --model). API credentials
 const allowedOptions = {
   create: ['db','title'],
   artifact: ['db','task','kind','file'],
-  approve: ['db','task','actor'],
+  approve: ['db','task'],
   status: ['db','task'],
   report: ['db','task'],
-  resolve: ['db','task','actor','decision','evidence','evidenceFile'],
+  resolve: ['db','task','decision','evidence','evidenceFile'],
   run: ['db','task','repository','worktreeRoot','model','baseRef','workerId','timeoutMs','maxTotalTokens','maxCostUsd','inputUsdPerMillion','outputUsdPerMillion','image','memory','cpus','pidsLimit','commandTimeoutMs','maxOutputBytes','maxTurns','maxToolCalls','maxOutputTokens','requestTimeoutMs'],
 };
 export async function main(argv=process.argv.slice(2)) {
@@ -78,7 +79,7 @@ export async function main(argv=process.argv.slice(2)) {
     return 0;
   });
   if(command==='approve')return withStore(options,store=>{
-    const id=required(options,'task'),actor=required(options,'actor');
+    const id=required(options,'task'),actor=currentActor();
     const task=store.get(id);
     const next={intent_review:'spec_review',spec_review:'plan_review',plan_review:'queued'}[task.status];
     if(!next)throw new Error('Task is not awaiting an approval');
@@ -98,7 +99,7 @@ export async function main(argv=process.argv.slice(2)) {
     return 0;
   });
   if(command==='resolve')return withStore(options,async store=>{
-    const id=required(options,'task'),actor=required(options,'actor'),decision=required(options,'decision');
+    const id=required(options,'task'),actor=currentActor(),decision=required(options,'decision');
     const evidence=options.evidenceFile?await readFile(resolve(options.evidenceFile),'utf8'):required(options,'evidence');
     const task=store.get(id);
     const updated=store.resolvePending(id,task.version,{actor,decision,evidence});

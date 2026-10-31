@@ -26,7 +26,7 @@ test('CLI creates, reviews, queues and reports a task with explicit approvals',a
  await writeFile(spec,'Export a named constant.');
  await writeFile(plan,JSON.stringify({verification:{commands:[{name:'unit',command:['node','-e','process.exit(0)']}]}}));
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','intent','--file',intent]).json().status,'intent_review');
- assert.equal(call(['approve','--db',f.db,'--task',id,'--actor','operator']).json().status,'spec_review');
+ assert.equal(call(['approve','--db',f.db,'--task',id]).json().status,'spec_review');
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','spec','--file',spec]).json().status,'spec_review');
  assert.equal(call(['approve','--db',f.db,'--task',id,'--actor','operator']).json().status,'plan_review');
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','plan','--file',plan]).json().status,'plan_review');
