@@ -67,3 +67,14 @@ TaskStore 是可信内部领域模块，actor 和验证证据由调用者提供�
 - 本地 Node 测试 24 项通过；后续远端 CI 以本次提交实际运行结果为准。
 
 边界：仍为可信单Worker原型；数据库不防宿主篡改，文件/进程副作用与审计写入非跨系统事务。审批/产物文本入口和旧数据库历史文本未做通用清洗。真实模型/OS沙箱仍阻塞，P1整体未完成。
+
+## 2026-10-31：P1 Sprint 2——独占租约、Git Worktree 与不确定操作核对
+
+- 新增 SQLite task lease 与单调递增 fencing token；原子获取、续租、释放、过期接管均写入任务事件。runTask 自动申请租约、心跳续租并在退出时释放；状态变更、检查点、验证与工具证据支持携带租约，旧 fencing token 被拒绝。
+- WorkspaceTools 增加 assertLease，在文件读取、写入和命令启动前校验当前租约；可信示例与报告测试已使用当前 lease。
+- 新增 GitWorktreeManager：每个任务创建独立 worktree 和 fencing-token 分支；工作树根目录要求 0700、当前用户所有，并与源仓库互不嵌套。SQLite 持久化 worktree 状态，支持创建/删除中断后的 git worktree list --porcelain 核对。
+- runTask 可接入 worktree manager，并把 workspace 路径传给 Runtime/evaluator。任务结束保留 worktree 供审查；删除默认拒绝 dirty worktree，不自动强制丢弃改动。
+- 新增 resolvePending 人工核对入口：需 actor、decision 和证据；只保存证据哈希。确认已完成则恢复到验证；确认未执行才允许使用原 operationKey 重试；未知状态继续暂停。
+- GitHub Actions agent-core job 在提交 8e19ae6 上实际通过：40 项 Node 测试，0 失败；npm run check 和 npm run test:guards 均通过。该 workflow 的自托管 evals job 仍排队，不能把整个 workflow 标记为通过。
+
+边界：SQLite 租约只适用于共享同一数据库文件的单主机/单实例，不是多主机分布式锁；Git Worktree 是版本控制工作区隔离，不是 OS 沙箱。bwrap 隔离仍被当前环境权限阻止，真实模型 Harness 尚未接入。Issue #6 的功能实现已完成，待本轮完整 CI 收尾核验后关闭。
