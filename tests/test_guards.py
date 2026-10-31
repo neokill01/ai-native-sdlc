@@ -69,6 +69,12 @@ class Evals(unittest.TestCase):
             for command, expected in [('true', 0), ('false', 1), ('false; true', 1)]:
                 path.write_text(json.dumps({'id': 'test', 'verify': command}))
                 self.assertEqual(self.run_eval(path).returncode, expected)
+            path.write_text(json.dumps({'id': 'timeout', 'verify': 'sleep 2', 'timeout_seconds': 1}))
+            timed_out = self.run_eval(path)
+            self.assertEqual(timed_out.returncode, 1)
+            self.assertIn('command timed out after 1s', timed_out.stdout)
+            path.write_text(json.dumps({'id': 'bad-timeout', 'verify': 'true', 'timeout_seconds': 0}))
+            self.assertNotEqual(self.run_eval(path).returncode, 0)
             path.write_text(json.dumps({'id': 'review', 'checks': ['manual']}))
             result = self.run_eval(path)
             self.assertEqual(result.returncode, 0)

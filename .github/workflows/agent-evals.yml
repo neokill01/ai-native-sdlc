@@ -20,9 +20,13 @@ on:
   schedule:
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   evals:
-    runs-on: [self-hosted, Linux, X64, ai-native-ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 

@@ -13,6 +13,11 @@ def definition(path):
     for key in ['description', 'project', 'verify']:
         if key in data and (not isinstance(data[key], str) or not data[key].strip()):
             raise ValueError(f'invalid {key}')
+    timeout = data.get('timeout_seconds', 120)
+    if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 600:
+        raise ValueError('timeout_seconds must be an integer between 1 and 600')
+    if 'verify' in data and len(data['verify']) > 4096:
+        raise ValueError('verify command too long')
     if 'checks' in data and (not isinstance(data['checks'], list) or not all(isinstance(x, str) and x.strip() for x in data['checks'])):
         raise ValueError('invalid checks')
     if not data.get('verify') and not data.get('checks'):
@@ -35,9 +40,14 @@ def main():
                 counts['SKIP'] += 1
                 print('SKIP: project-scoped eval; run in target repository')
             elif data.get('verify'):
+                timeout = data.get('timeout_seconds', 120)
                 with tempfile.TemporaryFile(mode='w+') as log:
-                    result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', data['verify']], stdout=log, stderr=log)
-                    status = 'PASS' if result.returncode == 0 else 'FAIL'
+                    try:
+                        result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', data['verify']], stdout=log, stderr=log, timeout=timeout)
+                        status = 'PASS' if result.returncode == 0 else 'FAIL'
+                    except subprocess.TimeoutExpired:
+                        status = 'FAIL'
+                        log.write(f'command timed out after {timeout}s\\n')
                     counts[status] += 1
                     print(status)
                     if status == 'FAIL':
