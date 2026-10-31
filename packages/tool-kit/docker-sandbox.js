@@ -21,7 +21,7 @@ function runControl(binary,args,{timeoutMs=10_000,signal,maxOutputBytes=64*1024}
       if(size>maxOutputBytes){kill('output_limit');return;}
       target.push(chunk);
     };
-    const abort=()=>kill('cancelled');
+    const abort=()=>kill(signal?.reason?.message==='timeout'?'timeout':'cancelled');
     const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);};
     child.stdout.on('data',c=>collect(out,c));
     child.stderr.on('data',c=>collect(err,c));
@@ -71,7 +71,7 @@ export class DockerSandbox {
     const name=`devos-${randomUUID().replaceAll('-','').slice(0,24)}`;
     const policy=[
       '--rm','--name',name,'--network','none','--read-only','--cap-drop','ALL',
-      '--security-opt','no-new-privileges:true','--pids-limit',String(this.pidsLimit),
+      '--security-opt','no-new-privileges:true','--security-opt','seccomp=default','--pids-limit',String(this.pidsLimit),
       '--memory',this.memory,'--memory-swap',this.memory,'--cpus',String(this.cpus),
       '--ulimit','nofile=1024:1024','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m',
       '--user',`${uid}:${gid}`,'--workdir','/workspace','--init',
@@ -80,13 +80,25 @@ export class DockerSandbox {
       '--label','devos.managed=true','--label',`devos.task=${digest(taskId).slice(0,16)}`,
     ];
     const policyHash=digest(JSON.stringify({image:this.image,policy,commandShape:command[0]}));
-    const created=await runControl(this.binary,['create',...policy,this.image,...command],{timeoutMs:15_000,signal});
-    if(created.reason||created.code!==0){
-      const result={tool:'sandbox',name:toolName,exitCode:created.code,signal:created.signal,reason:created.reason??'container_create_failed',durationMs:0,outputBytes:Buffer.byteLength(created.stdout+created.stderr),outputHash:digest(created.stdout+created.stderr),policyHash};
-      if(created.reason==='cancelled')signal?.throwIfAborted();
-      return {...result,output:(created.stdout+created.stderr).slice(0,maxOutputBytes)};
+    const createdAt=Date.now();
+    let created;
+    try { created=await runControl(this.binary,['create',...policy,this.image,...command],{timeoutMs:15_000,signal}); }
+    catch(error) {
+      assertLease();
+      const output=String(error.message??error);
+      const record={tool:'command',command:toolName,exitCode:null,signal:null,reason:'spawn_failed',durationMs:Date.now()-createdAt,outputBytes:Buffer.byteLength(output),outputHash:digest(output)};
+      onRecord(structuredClone(record));
+      return {...record,policyHash,output:output.slice(0,maxOutputBytes)};
     }
-    const started=Date.now();
+    if(created.reason||created.code!==0){
+      await this.killContainer(name);
+      assertLease();
+      const output=created.stdout+created.stderr;
+      const record={tool:'command',command:toolName,exitCode:created.code,signal:created.signal,reason:created.reason??'spawn_failed',durationMs:Date.now()-createdAt,outputBytes:Buffer.byteLength(output),outputHash:digest(output)};
+      onRecord(structuredClone(record));
+      return {...record,policyHash,output:output.slice(0,maxOutputBytes)};
+    }
+    const started=createdAt;
     let timer,stopped=null,stopPromise=null,size=0;
     const chunks=[];
     let child;
@@ -97,7 +109,7 @@ export class DockerSandbox {
         stopPromise=this.killContainer(name);
       }
     };
-    const abort=()=>stop('cancelled');
+    const abort=()=>stop(signal?.reason?.message==='timeout'?'timeout':'cancelled');
     const cleanup=()=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);};
     const outcome=await new Promise((resolveResult,reject)=>{
       child=spawn(this.binary,['start','--attach',name],{shell:false,detached:true,env:safeEnv(),stdio:['ignore','pipe','pipe']});
@@ -116,9 +128,9 @@ export class DockerSandbox {
     const output=Buffer.concat(chunks);
     const reason=stopped??(outcome.error?'spawn_failed':null);
     assertLease();
-    const record={tool:'sandbox',name:toolName,exitCode:reason?null:outcome.code,signal:outcome.signal,reason,durationMs:Date.now()-started,outputBytes:size,outputHash:digest(output),policyHash};
+    const record={tool:'command',command:toolName,exitCode:reason?null:outcome.code,signal:outcome.signal,reason,durationMs:Date.now()-started,outputBytes:size,outputHash:digest(output)};
     const saved=onRecord(structuredClone(record));
     if(saved&&typeof saved.then==='function')throw new Error('Sandbox audit sink must be synchronous');
-    return {...record,output:output.toString('utf8')};
+    return {...record,policyHash,output:output.toString('utf8')};
   }
 }

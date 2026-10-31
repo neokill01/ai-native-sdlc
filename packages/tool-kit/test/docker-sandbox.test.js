@@ -15,14 +15,18 @@ async function fixture(t){
  const sandbox=new DockerSandbox({image,timeoutMs:15_000,maxOutputBytes:4096});
  return {root,sandbox,guard:()=>true};
 }
-test('container writes only to the mounted task workspace', {skip}, async t=>{
+test('container writes only to the mounted task workspace and emits schema-safe audit metadata', {skip}, async t=>{
  const f=await fixture(t);
- const result=await f.sandbox.run({workspace:f.root,command:['node','-e','require("fs").writeFileSync("/workspace/result.txt","sandbox-ok")'],assertLease:f.guard});
+ let audit=null;
+ const result=await f.sandbox.run({workspace:f.root,command:['node','-e','require("fs").writeFileSync("/workspace/result.txt","sandbox-ok")'],assertLease:f.guard,onRecord:record=>{audit=record;}});
  assert.equal(result.exitCode,0);
  assert.equal(result.reason,null);
  assert.equal(await readFile(join(f.root,'result.txt'),'utf8'),'sandbox-ok');
  assert.ok(result.policyHash);
  assert.equal(Object.hasOwn(result,'outputHash'),true);
+ assert.equal(audit.tool,'command');
+ assert.equal(audit.command,'command');
+ assert.equal(audit.outputHash.length,64);
 });
 test('network, root filesystem and Linux capabilities are restricted', {skip}, async t=>{
  const f=await fixture(t);
@@ -38,6 +42,7 @@ test('timeout kills the container and bounds output', {skip}, async t=>{
  assert.equal(limited.reason,'output_limit');
  assert.ok(limited.outputBytes>=128);
 });
+test('host environment secrets and sibling files are not exposed to the container', {skip}, async t=>{ const f=await fixture(t); const sibling=join(f.root,'..','host-secret.txt'); const { writeFile }=await import('node:fs/promises'); await writeFile(sibling,'must-not-be-mounted'); process.env.DEVOS_SANDBOX_SECRET='must-not-forward'; try { const script='const fs=require("fs");if(process.env.DEVOS_SANDBOX_SECRET)process.exit(31);if(fs.existsSync("'+sibling+'"))process.exit(32);'; const result=await f.sandbox.run({workspace:f.root,command:['node','-e',script],assertLease:f.guard}); assert.equal(result.exitCode,0,result.output); } finally { delete process.env.DEVOS_SANDBOX_SECRET; } });
 test('lease is checked before starting the sandbox and after completion', {skip}, async t=>{
  const f=await fixture(t);
  await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:()=>{throw new Error('lease lost')}}),/lease lost/);
