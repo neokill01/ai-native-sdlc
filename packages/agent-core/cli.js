@@ -34,16 +34,17 @@ async function withStore(options,fn) {
   finally { store.close(); }
 }
 const json=value=>process.stdout.write(JSON.stringify(value,null,2)+'\n');
+const currentActor=()=>{const user=userInfo().username;const uid=typeof process.getuid==='function'?process.getuid():null;return uid===null?user:`${user}:uid=${uid}`;};
 function help() {
   process.stdout.write(`Agentic DevOS CLI
 
 Commands:
   create --db PATH --title TEXT
   artifact --db PATH --task ID --kind intent|spec|plan --file PATH
-  approve --db PATH --task ID --actor ACTOR
+  approve --db PATH --task ID
   status --db PATH --task ID
   report --db PATH --task ID
-  resolve --db PATH --task ID --actor ACTOR --decision completed|not_executed (--evidence TEXT | --evidence-file PATH)
+  resolve --db PATH --task ID --decision completed|not_executed (--evidence TEXT | --evidence-file PATH)
   run --db PATH --task ID --repository PATH --worktree-root PATH [--model MODEL] [--max-total-tokens N] [--max-cost-usd USD]
 
 Run requires OPENAI_API_KEY and DEVOS_OPENAI_MODEL (or --model). API credentials are read only by the host process and are never passed into the sandbox.
