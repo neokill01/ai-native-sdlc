@@ -28,9 +28,9 @@ test('CLI creates, reviews, queues and reports a task with explicit approvals',a
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','intent','--file',intent]).json().status,'intent_review');
  assert.equal(call(['approve','--db',f.db,'--task',id]).json().status,'spec_review');
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','spec','--file',spec]).json().status,'spec_review');
- assert.equal(call(['approve','--db',f.db,'--task',id,'--actor','operator']).json().status,'plan_review');
+ assert.equal(call(['approve','--db',f.db,'--task',id]).json().status,'plan_review');
  assert.equal(call(['artifact','--db',f.db,'--task',id,'--kind','plan','--file',plan]).json().status,'plan_review');
- assert.equal(call(['approve','--db',f.db,'--task',id,'--actor','operator']).json().status,'queued');
+ assert.equal(call(['approve','--db',f.db,'--task',id]).json().status,'queued');
  const status=call(['status','--db',f.db,'--task',id]).json();
  assert.equal(status.status,'queued');
  const report=call(['report','--db',f.db,'--task',id]).json();
@@ -57,7 +57,7 @@ test('CLI manual resolution resumes a paused uncertain operation with hashed evi
  await runTask(store,task.id,{runtime:{execute:async()=>{}},evaluator:{verify:async()=>({verdict:'passed',evidence:'unused'})}});
  assert.equal(store.get(task.id).status,'paused');
  store.close();
- const resolved=call(['resolve','--db',f.db,'--task',task.id,'--actor','operator','--decision','completed','--evidence','external job verified complete']);
+ const resolved=call(['resolve','--db',f.db,'--task',task.id,'--decision','completed','--evidence','external job verified complete']);
  assert.equal(resolved.status,0,resolved.stderr);
  assert.equal(resolved.json().status,'queued');
  assert.ok(resolved.json().resolution.evidenceHash);
