@@ -81,3 +81,19 @@ test('reopening database preserves approval, task version and ordered events', t
     assert.equal(task.status, 'queued');
   } finally { reopened.close(); }
 });
+
+test('delivery summary is bounded, secret-screened, lease-fenced and included in immutable reports',t=>{
+  const {store}=fixture(t);
+  const queuedTask=queued(store);
+  const lease=store.acquireLease(queuedTask.id,'summary-worker',60_000);
+  const running=store.transition(queuedTask.id,queuedTask.version,'running',null,lease);
+  const summary='Implemented the feature and verified the unit tests.';
+  const recorded=store.deliverySummary(running.id,running.version,summary,lease);
+  assert.equal(recorded.deliverySummary,summary);
+  assert.equal(recorded.deliverySummaryHash.length,64);
+  assert.throws(()=>store.deliverySummary(recorded.id,recorded.version,'OPENAI_API_KEY="sk-abcdefghijklmnopqrstuvwxyz"',lease),/sensitive delivery summary/);
+  const report=store.report(recorded.id);
+  assert.equal(report.deliverySummary,summary);
+  assert.equal(report.deliverySummaryHash,recorded.deliverySummaryHash);
+  store.releaseLease(recorded.id,lease);
+});
