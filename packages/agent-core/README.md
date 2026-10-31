@@ -74,3 +74,27 @@ OpenAIResponsesRuntime 使用官方 Responses API function calling。API Key 仅
 生产配置需显式提供 DEVOS_OPENAI_MODEL；可配置 maxTurns、maxToolCalls、maxTotalTokens、maxOutputTokens。若设置 maxCostUsd，必须同时提供当前模型的 input/output 每百万 token 价格，系统不会猜测价格。model.usage 事件仅保存模型名、token 数和估算费用，不保存 API Key 或原始响应正文。
 
 ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列表，独立在 DockerSandbox 运行；未配置验证命令不能通过验收。真实 API 调用需要宿主环境提供 OPENAI_API_KEY 与模型访问权限；ChatGPT 订阅不自动等于 API 额度。此版本通过 mock Responses API 做协议/工具流测试，尚未使用真实 API Key 完成端到端模型任务。
+
+
+## CLI
+
+在 Linux 主机安装 Node 24 与 Docker，预先拉取 sandbox image。设置 OPENAI_API_KEY 和 DEVOS_OPENAI_MODEL 后：
+
+```bash
+npm run devos -- create --db .devos/tasks.sqlite --title "Add a feature"
+npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind intent --file ./intent.md
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind spec --file ./spec.md
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind plan --file ./plan.json
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- run --db .devos/tasks.sqlite --task TASK_ID --repository "$PWD" --worktree-root "$HOME/.devos/worktrees" --max-total-tokens 50000
+npm run devos -- status --db .devos/tasks.sqlite --task TASK_ID
+npm run devos -- report --db .devos/tasks.sqlite --task TASK_ID
+```
+
+Plan artifact 必须是 JSON，并提供已审批的 verification.commands，例如：
+```json
+{"verification":{"commands":[{"name":"unit","command":["npm","test"],"timeout_ms":120000},{"name":"lint","command":["npm","run","lint"],"timeout_ms":120000}]}}
+```
+可选传入 max-cost-usd 时，必须同时提供该模型当前的 input/output 每百万 token 价格；没有价格时仍按 token、轮数和命令超时预算停止。CLI 的 actor 是本地受信任调用者标签，不是多用户身份认证。数据库默认单主机 SQLite，不支持多主机并发部署。

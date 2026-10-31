@@ -58,6 +58,7 @@ export class TaskStore {
     this.assertLease(id, lease);
     return this.db.prepare('SELECT * FROM task_worktrees WHERE task_id=? ORDER BY fencing_token').all(id);
   }
+  worktreeHistory(id) { return this.db.prepare('SELECT * FROM task_worktrees WHERE task_id=? ORDER BY fencing_token').all(id); }
   updateWorktree(id, lease, fencingToken, state, headSha = null) {
     const allowed = { creating: ['ready','failed','orphaned','missing'], ready: ['ready','removing','missing','orphaned'], removing: ['removed','ready','orphaned'], failed: ['orphaned'], missing: ['ready','orphaned'], orphaned: ['removing','removed'], removed: [] };
     if (!Object.hasOwn(allowed, state)) throw new Error('Invalid worktree state');
