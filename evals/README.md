@@ -39,7 +39,7 @@
 ## 运行器修订
 
 需要 Bash 与 Python 3.9+，不再依赖 jq。CI 使用一次性 ubuntu-latest runner 与只读仓库权限，不依赖长期在线的自托管 runner。定义损坏、文件缺失、无匹配定义返回非零。
-verify 使用 `bash -e -o pipefail`，每条命令默认 120 秒超时，可通过 timeout_seconds 配置 1–600 秒；超时按 FAIL 处理。请把预期非零命令放在 if 等显式条件中。
+verify 使用独立进程组运行 `bash -e -o pipefail`，默认 120 秒超时，可通过 timeout_seconds 配置 1–600 秒；超时时终止整个进程组并按 FAIL 处理。请把预期非零命令放在 if 等显式条件中。
 含 project 的定义一律 SKIP，在目标仓库自己的 CI 运行；无 verify 的清单为 REVIEW。
 汇总包含 PASS/FAIL/REVIEW/SKIP；存在待审或跳过时 RESULT 为 REVIEW（退出 0），不等于全量通过。
 命令仍具备当前宿主权限，只允许运行可信 eval 定义。

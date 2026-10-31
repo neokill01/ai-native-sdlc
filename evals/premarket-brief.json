@@ -10,5 +10,6 @@
     "CLI 输出含五块内容的 Markdown 简报",
     "tests 全绿且纯标准库可跑"
   ],
-  "verify": "cd examples/premarket-brief && python3 -m unittest discover -s tests >/dev/null 2>&1 && python3 -m premarket_brief --day 2026-09-08 >/dev/null 2>&1"
+  "timeout_seconds": 30,
+  "verify": "cd examples/premarket-brief && python3 -m unittest discover -s tests && python3 -m premarket_brief --day 2026-09-08"
 }

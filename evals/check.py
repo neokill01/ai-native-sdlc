@@ -1,6 +1,8 @@
 """Execute trusted repository eval definitions. Commands have host shell access."""
 import json
+import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +27,27 @@ def definition(path):
     return data
 
 
+def run_verify(command, timeout, log):
+    process = subprocess.Popen(
+        ['bash', '-e', '-o', 'pipefail', '-c', command],
+        stdout=log,
+        stderr=log,
+        start_new_session=(os.name == 'posix'),
+    )
+    try:
+        return process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == 'posix':
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        process.wait()
+        raise
+
+
 def main():
     paths = list(map(Path, sys.argv[1:])) if len(sys.argv) > 1 else sorted(Path('evals').glob('*.json'))
     counts = dict(PASS=0, FAIL=0, REVIEW=0, SKIP=0)
@@ -43,7 +66,8 @@ def main():
                 timeout = data.get('timeout_seconds', 120)
                 with tempfile.TemporaryFile(mode='w+') as log:
                     try:
-                        result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', data['verify']], stdout=log, stderr=log, timeout=timeout)
+                        returncode = run_verify(data['verify'], timeout, log)
+                        result = type('VerifyResult', (), {'returncode': returncode})()
                         status = 'PASS' if result.returncode == 0 else 'FAIL'
                     except subprocess.TimeoutExpired:
                         status = 'FAIL'
