@@ -60,3 +60,15 @@ test('timeouts, cancellation and output limits terminate commands', async t => {
   assert.equal((await pending).reason, 'cancelled');
   assert.equal((await tools.command('flood', { maxOutputBytes: 100 })).reason, 'output_limit');
 });
+
+test('spawn failure retains metadata, and persistence failure rejects tool success', async t => {
+  const { tools } = await setup(t, { trustedLocal: true, commands: { missing: { executable: '/does-not-exist-devos', args: [] } } });
+  const result = await tools.command('missing');
+  assert.equal(result.reason, 'spawn_failed');
+  assert.equal(result.exitCode, null);
+  const { tools: broken } = await setup(t, { trustedLocal: true,
+    commands: { test: { executable: process.execPath, args: ['-e', ''] } },
+    onRecord: () => { throw new Error('audit unavailable'); },
+  });
+  await assert.rejects(() => broken.command('test'), /audit persistence/);
+});

@@ -22,6 +22,7 @@ export async function workspaceDemo() {
     }
     const id = task.id;
     const tools = await WorkspaceTools.create({ root, writable: ['src/add.mjs'], trustedLocal: true,
+      onRecord: record => store.recordTool(id, store.get(id).repairs, record),
       authorizeWrite: () => {
         const current = store.get(id);
         return current.status === 'running' && ['intent', 'spec', 'plan'].every(k => current.approvals[k]?.hash === current.artifacts[k]?.hash);
@@ -43,7 +44,7 @@ export async function workspaceDemo() {
       } },
     });
     return { mode: 'trusted_local_deterministic_fixture', status: result.status, attempts, repairs: result.repairs,
-      verification: result.verification, commands, tools: tools.records, eventCount: store.events(id).length };
+      verification: result.verification, report: store.report(id), commands, tools: tools.records, eventCount: store.events(id).length };
   } finally { store.close(); await rm(root, { recursive: true, force: true }); }
 }
 if (process.argv[1] === new URL(import.meta.url).pathname) console.log(JSON.stringify(await workspaceDemo(), null, 2));

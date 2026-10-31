@@ -6,7 +6,9 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
   // A pending side effect after a crash is uncertain. Never replay it automatically.
   if (task.checkpoint?.operation === 'pending') {
     if (task.status !== 'running') throw new Error('Invalid pending checkpoint');
-    return store.transition(id, task.version, 'paused');
+    const paused = store.transition(id, task.version, 'paused', 'uncertain_operation');
+    store.report(id);
+    return paused;
   }
   const controller = new AbortController();
   const deadline = task.checkpoint?.deadline ?? Date.now() + timeoutMs;
@@ -52,7 +54,7 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
         const result = await invoke(abortSignal => evaluator.verify({ task: structuredClone(task), signal: abortSignal }));
         task = store.verification(id, task.version, result?.verdict, result?.evidence);
         if (task.verification === 'passed') return store.transition(id, task.version, 'completed');
-        if (task.repairs >= task.maxRepairs) return store.transition(id, task.version, 'failed');
+        if (task.repairs >= task.maxRepairs) return store.transition(id, task.version, 'failed', 'repair_budget_exceeded');
         task = store.transition(id, task.version, 'repairing');
       }
     }
@@ -62,9 +64,11 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
     if (current.version !== task.version) throw error;
     if (!['queued', 'running', 'verifying', 'repairing'].includes(current.status)) throw error;
     const status = signal?.aborted ? 'cancelled' : 'failed';
-    return store.transition(id, current.version, status);
+    const reason = signal?.aborted ? 'cancelled' : controller.signal.aborted || Date.now() >= deadline ? 'timeout' : 'adapter_failed';
+    return store.transition(id, current.version, status, reason);
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', cancel);
+    store.report(id);
   }
 }

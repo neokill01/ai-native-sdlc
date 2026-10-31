@@ -9,10 +9,12 @@ const sensitive = /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|\b(?:p
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 export class WorkspaceTools {
-  static async create({ root, writable = [], commands = {}, authorizeWrite, trustedLocal = false }) {
+  static async create({ root, writable = [], commands = {}, authorizeWrite, trustedLocal = false, onRecord = () => {} }) {
     if (!Array.isArray(writable) || writable.some(p => typeof p !== 'string' || !p || isAbsolute(p) || p.split(/[\\/]/).includes('..'))) throw new Error('Invalid writable paths');
     if (typeof authorizeWrite !== 'function') throw new Error('Write authorization required');
+    if (typeof onRecord !== 'function') throw new Error('Invalid audit sink');
     const tools = new WorkspaceTools();
+    tools.onRecord = onRecord;
     tools.root = await realpath(root);
     tools.writable = [...writable];
     tools.commands = structuredClone(commands);
@@ -20,6 +22,11 @@ export class WorkspaceTools {
     tools.trustedLocal = trustedLocal;
     tools.records = [];
     return tools;
+  }
+  record(record) {
+    const result = this.onRecord(structuredClone(record));
+    if (result && typeof result.then === 'function') throw new Error('Audit sink must be synchronous');
+    this.records.push(record);
   }
   async path(name) {
     if (typeof name !== 'string' || !name || name.includes('\0') || name.includes('\\') || isAbsolute(name)) throw new Error('Invalid workspace path');
@@ -45,7 +52,7 @@ export class WorkspaceTools {
       if (!info.isFile() || info.nlink !== 1 || info.size > 1024 * 1024) throw new Error('File type or size denied');
       const content = await file.readFile('utf8');
       if (sensitive.test(content)) throw new Error('Sensitive content denied');
-      this.records.push({ tool: 'read', path: local, hash: hash(content) });
+      this.record({ tool: 'read', path: local, hash: hash(content) });
       return content;
     } finally { await file.close(); }
   }
@@ -63,7 +70,7 @@ export class WorkspaceTools {
       await file.truncate(0);
       await file.writeFile(content);
     } finally { await file.close(); }
-    this.records.push({ tool: 'write', path: local, hash: hash(content) });
+    this.record({ tool: 'write', path: local, hash: hash(content) });
   }
   async command(name, { signal, timeoutMs = 5000, maxOutputBytes = 65536 } = {}) {
     // Caller cannot provide executable, arguments, shell string or environment.
@@ -74,11 +81,12 @@ export class WorkspaceTools {
     signal?.throwIfAborted();
     const started = Date.now();
     return new Promise((resolveResult, reject) => {
-      let timer, stopped, size = 0;
+      let timer, stopped, spawnFailed = false, size = 0;
       const chunks = [];
       const child = spawn(spec.executable, spec.args, { cwd: this.root, shell: false, detached: process.platform !== 'win32', env: { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8' }, stdio: ['ignore', 'pipe', 'pipe'] });
       const stop = reason => {
         stopped ??= reason;
+        if (!child.pid) return;
         try { if (process.platform !== 'win32') process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') child.kill('SIGKILL'); }
       };
       const abort = () => stop('cancelled');
@@ -90,14 +98,16 @@ export class WorkspaceTools {
       const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); };
       child.stdout.on('data', collect);
       child.stderr.on('data', collect);
-      child.once('error', () => { cleanup(); reject(new Error('Command spawn failed')); });
+      child.once('error', () => { spawnFailed = true; });
       child.once('close', (exitCode, exitSignal) => {
         cleanup();
         const output = Buffer.concat(chunks);
         // Store only hashes and metadata. Raw process output may contain secrets.
-        const result = { command: name, exitCode, signal: exitSignal, reason: stopped ?? null, durationMs: Date.now() - started, outputBytes: size, outputHash: hash(output) };
-        this.records.push({ tool: 'command', ...result });
-        resolveResult(result);
+        const result = { command: name, exitCode: spawnFailed ? null : exitCode, signal: exitSignal, reason: spawnFailed ? 'spawn_failed' : stopped ?? null, durationMs: Date.now() - started, outputBytes: size, outputHash: hash(output) };
+        try {
+          this.record({ tool: 'command', ...result });
+          resolveResult(result);
+        } catch { reject(new Error('Command audit persistence failed')); }
       });
       signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) abort();

@@ -3,6 +3,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
+import { initializeEvidence, recordTool, captureReport } from './evidence.js';
 
 const next = {
   created: ['intent_review'], intent_review: ['spec_review'],
@@ -20,6 +21,14 @@ export class TaskStore {
       CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY, version INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL REFERENCES tasks(id), type TEXT NOT NULL, payload TEXT NOT NULL);
     `);
+    initializeEvidence(this.db);
+  }
+  recordTool(id, attempt, record) { return recordTool(this, id, attempt, record); }
+  report(id) { return captureReport(this, id); }
+  readReport(id) {
+    const row = this.db.prepare('SELECT data FROM reports WHERE id=?').get(id);
+    if (!row) throw new Error('Report not found');
+    return JSON.parse(row.data);
   }
   close() { this.db.close(); }
   get(id) {
@@ -84,7 +93,8 @@ export class TaskStore {
     return this.mutate(id, version, 'verification.recorded', task => {
       if (task.status !== 'verifying') throw new Error('Not verifying');
       task.verification = verdict;
-      task.evidence = evidence;
+      task.evidenceHash = createHash('sha256').update(evidence).digest('hex');
+      return { verdict, evidenceHash: task.evidenceHash, attempt: task.repairs };
     });
   }
   checkpoint(id, version, detail) {
@@ -94,7 +104,9 @@ export class TaskStore {
       return { checkpoint: task.checkpoint };
     });
   }
-  transition(id, version, status) {
+  transition(id, version, status, reason = null) {
+    if (reason !== null && (!['failed', 'cancelled', 'paused'].includes(status) ||
+      !['timeout', 'cancelled', 'repair_budget_exceeded', 'adapter_failed', 'uncertain_operation'].includes(reason))) throw new Error('Invalid stop reason');
     return this.mutate(id, version, 'task.transitioned', task => {
       if (!next[task.status]?.includes(status)) throw new Error('Invalid transition');
       const kind = artifactKind[task.status];
@@ -104,6 +116,7 @@ export class TaskStore {
         if (task.status === 'repairing') task.checkpoint = { deadline: task.checkpoint?.deadline };
         task.verification = 'not_run';
         delete task.evidence;
+        delete task.evidenceHash;
       }
       if (status === 'repairing') {
         if (task.verification !== 'failed') throw new Error('Failed verification required');
@@ -112,6 +125,9 @@ export class TaskStore {
       }
       if (status === 'completed' && task.verification !== 'passed') throw new Error('Passing evidence required');
       task.status = status;
+      if (reason) task.stopReason = reason;
+      else delete task.stopReason;
+      return { reason };
     });
   }
 }

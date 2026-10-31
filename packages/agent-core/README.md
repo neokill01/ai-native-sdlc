@@ -27,3 +27,20 @@ npm run demo:loop
 
 不确定操作暂停后仍需人工核对和恢复入口，当前未提供 reconciliation API。失败原因分类、费用预算、结构化命令证据、鉴权、审查和真实 Harness 接入尚未实现。
 SQLite 审批事件已包含 actor、产物类别和哈希，但完整不可变审计服务与身份校验仍未实现。
+
+## 持久化证据与报告
+
+`store.recordTool(taskId, attempt, record)` 接收严格元数据 schema；拒绝原始 output/content/环境变量及未知字段。通过 `WorkspaceTools.create({ onRecord })` 同步落库，不改变任务版本。同步持久化失败时工具调用拒绝返回成功；实际副作用仍可能已发生，必须按 pending 检查点核对。
+
+`store.report(taskId)` 原子生成当前状态快照；`store.readReport(reportId)` 读取不可变历史版本。同一任务版本和事件序列重复查询返回同一报告；迟到证据会产生新版本。Loop 退出时自动捕获报告；晚到记录在再次查询时纳入新快照。
+
+报告区分编排器 verification 与真实命令检查结果。没有命令证据时为 not_run；同一修复轮次每个命令取最后一次结果，完整历史仍在 tools 中。需求验收目前统一为 needs_human_review，不能将测试命令通过当作所有需求已验收。
+
+```sh
+npm run report -- --db /path/tasks.db --task TASK_ID
+npm run report -- --db /path/tasks.db --report REPORT_ID
+```
+
+验证器自由文本只存 SHA-256，不持久化正文。此约束针对本版本新写入的验证与工具证据，不追溯清除旧数据库中的历史自由文本。任务/产物文本仍是原有可信入口，未实现通用秘密检测或凭据保管服务。
+
+本轮已补充失败原因枚举、报告与元数据持久化；进程执行强制隔离、跨进程租约及完整不可变审计服务仍未完成。SQLite 可被宿主管理员修改，不是防篡改存储。
