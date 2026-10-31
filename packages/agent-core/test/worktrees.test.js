@@ -6,6 +6,7 @@ import { join,resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { TaskStore } from '../index.js';
 import { GitWorktreeManager } from '../worktrees.js';
+import { runTask } from '../loop.js';
 
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'devos-worktree-'));
@@ -43,7 +44,7 @@ test('dirty worktree is preserved when removal is not forced',async t=>{
  const f=await fixture(t);
  const item=await f.manager.acquire({taskId:f.task.id,lease:f.lease,repository:f.repository});
  await writeFile(join(item.path,'uncommitted.txt'),'keep');
- await assert.rejects(()=>f.manager.remove({taskId:f.task.id,lease:f.lease}),/git worktree remove failed/);
+ await assert.rejects(()=>f.manager.remove({taskId:f.task.id,lease:f.lease}),/git worktree failed/);
  const recovered=await f.manager.reconcile({taskId:f.task.id,lease:f.lease});
  assert.equal(recovered.state,'ready');
  assert.equal(await readFile(join(item.path,'uncommitted.txt'),'utf8'),'keep');
@@ -69,4 +70,26 @@ test('reconciles a worktree whose creation completed before its ready event',asy
  execFileSync('git',['-C',f.repository,'worktree','add','-b',branch,path,'HEAD'],{stdio:'ignore'});
  const item=await f.manager.reconcile({taskId:f.task.id,lease:f.lease});
  assert.equal(item.state,'ready');
+});
+
+test('runTask supplies the leased worktree path to runtime and evaluator',async t=>{
+ const f=await fixture(t);
+ f.store.releaseLease(f.task.id,f.lease);
+ let task=f.task;
+ task=f.store.artifact(task.id,task.version,'intent','implement in isolated workspace');
+ task=f.store.transition(task.id,task.version,'intent_review');
+ for(const [kind,target] of [['intent','spec_review'],['spec','plan_review'],['plan','queued']]){
+  if(kind!=='intent')task=f.store.artifact(task.id,task.version,kind,kind);
+  task=f.store.approve(task.id,task.version,'test-reviewer');
+  task=f.store.transition(task.id,task.version,target);
+ }
+ let runtimePath=null,evaluatorPath=null;
+ const result=await runTask(f.store,task.id,{
+  worktreeManager:f.manager,repository:f.repository,
+  runtime:{execute:async({workspace,lease})=>{runtimePath=workspace;assert.ok(workspace);f.store.assertLease(task.id,lease);}},
+  evaluator:{verify:async({workspace,lease})=>{evaluatorPath=workspace;f.store.assertLease(task.id,lease);return {verdict:'passed',evidence:'isolated workspace verified'};}}
+ });
+ assert.equal(result.status,'completed');
+ assert.equal(runtimePath,evaluatorPath);
+ assert.ok(runtimePath.startsWith(resolve(f.worktreeRoot)));
 });
