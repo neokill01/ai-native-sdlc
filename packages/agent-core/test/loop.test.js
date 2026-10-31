@@ -105,3 +105,49 @@ test('expired persisted deadline cannot be reset on recovery', async t => {
   });
   assert.equal(result.status, 'failed');
 });
+
+test('manual reconciliation can resume an uncertain operation as completed without replay', async t => {
+  const { store, task: original } = setup(t);
+  let task = store.transition(original.id, original.version, 'running');
+  task = store.checkpoint(task.id, task.version, { operation: 'pending', operationKey: 'uncertain-completed', deadline: Date.now() + 10_000 });
+  task = await runTask(store, task.id, { runtime: { execute: () => { throw new Error('must pause before replay'); } }, evaluator: { verify: () => {} } });
+  assert.equal(task.status, 'paused');
+  const resolved = store.resolvePending(task.id, task.version, { actor: 'operator', decision: 'completed', evidence: 'external job id 123 confirmed complete' });
+  assert.equal(resolved.status, 'queued');
+  assert.equal(resolved.checkpoint.operation, 'finished');
+  const completed = await runTask(store, task.id, {
+    runtime: { execute: () => { throw new Error('completed operation must not replay'); } },
+    evaluator: { verify: async () => ({ verdict: 'passed', evidence: 'reconciled output verified' }) },
+  });
+  assert.equal(completed.status, 'completed');
+});
+
+test('manual reconciliation can authorize retry only after explicit not-executed evidence', async t => {
+  const { store, task: original } = setup(t);
+  let task = store.transition(original.id, original.version, 'running');
+  task = store.checkpoint(task.id, task.version, { operation: 'pending', operationKey: 'uncertain-retry', deadline: Date.now() + 10_000 });
+  task = await runTask(store, task.id, { runtime: { execute: () => { throw new Error('must pause before replay'); } }, evaluator: { verify: () => {} } });
+  const resolved = store.resolvePending(task.id, task.version, { actor: 'operator', decision: 'not_executed', evidence: 'external job lookup confirms no operation was started' });
+  assert.equal(resolved.status, 'queued');
+  assert.equal(resolved.checkpoint.operation, undefined);
+  let calls = 0;
+  const completed = await runTask(store, task.id, {
+    runtime: { execute: async ({ operationKey }) => { calls++; assert.equal(operationKey, 'uncertain-retry'); } },
+    evaluator: { verify: async () => ({ verdict: 'passed', evidence: 'retry output verified' }) },
+  });
+  assert.equal(calls, 1);
+  assert.equal(completed.status, 'completed');
+});
+
+test('manual resolution requires actor, evidence and an unleased paused task', async t => {
+  const { store, task: original } = setup(t);
+  let task = store.transition(original.id, original.version, 'running');
+  task = store.checkpoint(task.id, task.version, { operation: 'pending', operationKey: 'uncertain-guard' });
+  task = await runTask(store, task.id, { runtime: { execute: () => {} }, evaluator: { verify: () => {} } });
+  assert.equal(task.status, 'paused');
+  assert.throws(() => store.resolvePending(task.id, task.version, { actor: '', decision: 'completed', evidence: 'confirmed' }), /Manual resolution evidence required/);
+  assert.throws(() => store.resolvePending(task.id, task.version, { actor: 'operator', decision: 'completed', evidence: '' }), /Manual resolution evidence required/);
+  const lease = store.acquireLease(task.id, 'recovery-worker', 60_000);
+  assert.throws(() => store.resolvePending(task.id, task.version, { actor: 'operator', decision: 'completed', evidence: 'confirmed' }), /still leased/);
+  store.releaseLease(task.id, lease);
+});

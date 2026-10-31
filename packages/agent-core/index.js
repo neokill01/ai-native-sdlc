@@ -157,6 +157,26 @@ export class TaskStore {
       return { checkpoint: task.checkpoint };
     }, lease);
   }
+  resolvePending(id, version, { actor, decision, evidence } = {}) {
+    if (typeof actor !== 'string' || !actor.trim() || actor.length > 128 ||
+        !['completed', 'not_executed'].includes(decision) ||
+        typeof evidence !== 'string' || !evidence.trim() || evidence.length > 4096) throw new Error('Manual resolution evidence required');
+    const evidenceHash = createHash('sha256').update(evidence).digest('hex');
+    return this.mutate(id, version, 'run.pending_resolved', task => {
+      if (task.status !== 'paused' || task.checkpoint?.operation !== 'pending') throw new Error('No uncertain operation awaiting resolution');
+      if (this.currentLease(id)) throw new Error('Task is still leased');
+      const operationKey = task.checkpoint.operationKey;
+      task.checkpoint.resolution = { actor, decision, evidenceHash, at: new Date().toISOString() };
+      if (decision === 'completed') task.checkpoint.operation = 'finished';
+      else {
+        task.checkpoint.lastUncertainOperationKey = operationKey;
+        delete task.checkpoint.operation;
+        delete task.checkpoint.operationKey;
+      }
+      task.status = 'queued';
+      return { actor, decision, operationKey, evidenceHash };
+    });
+  }
   transition(id, version, status, reason = null, lease = null) {
     if (reason !== null && (!['failed', 'cancelled', 'paused'].includes(status) ||
       !['timeout', 'cancelled', 'repair_budget_exceeded', 'adapter_failed', 'uncertain_operation'].includes(reason))) throw new Error('Invalid stop reason');

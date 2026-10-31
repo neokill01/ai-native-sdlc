@@ -59,3 +59,9 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 `GitWorktreeManager` 为任务创建独立 Git Worktree 和 fencing-token 专属分支；工作树根目录必须与主仓库互不嵌套。`runTask` 可通过 `worktreeManager` 与 `repository` 参数把工作区路径传给 Runtime 和 evaluator。租约失效的旧 Worker 在 WorkspaceTools 的每次文件/命令操作前会被拒绝。恢复时优先复用任务已登记的 ready worktree；pending 外部副作用仍暂停，不自动重放。
 
 工作树会保留供审查，不会在任务结束时自动强制删除。`remove()` 默认只删除 clean worktree；有未提交改动时 Git 会拒绝删除，只有明确传入 `force: true` 才会丢弃。`reconcile()` 根据 `git worktree list --porcelain` 核对创建/删除中断；无法确认的路径标记 orphaned/missing，留待人工处理。该功能是 Git 工作区隔离，不等于 OS 级安全沙箱。
+
+
+## 不确定操作人工核对
+
+
+`runTask` 遇到 `checkpoint.operation=pending` 时会暂停，不会自动重放。可信审批入口可调用 `store.resolvePending(taskId, version, { actor, decision, evidence })`：`completed` 表示人工确认外部副作用已完成，恢复后直接进入验证；`not_executed` 表示人工确认未执行，恢复后允许使用原任务/修复轮次的稳定 operationKey 重新执行。系统只保存核对证据的 SHA-256，不保存自由文本。该入口必须由后续 API 层做身份认证与授权，不能直接暴露给未认证调用者。
