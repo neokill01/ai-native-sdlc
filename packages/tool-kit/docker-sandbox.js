@@ -97,7 +97,7 @@ export class DockerSandbox {
       const output=created.stdout+created.stderr;
       const record={tool:'command',command:toolName,exitCode:created.code,signal:created.signal,reason:created.reason??'spawn_failed',durationMs:Date.now()-createdAt,outputBytes:Buffer.byteLength(output),outputHash:digest(output)};
       onRecord(structuredClone(record));
-      return {...record,policyHash,output:output.slice(0,maxOutputBytes)};
+      return {...record,runId,policyHash,output:output.slice(0,maxOutputBytes)};
     }
     const started=createdAt;
     let timer,stopped=null,stopPromise=null,size=0;
