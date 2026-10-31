@@ -22,7 +22,7 @@ npm run demo:loop
 
 ## 边界
 
-单 Worker 原型，没有分布式租约。不得同时启动同一任务的多个执行器。
+执行器通过 SQLite 原子租约串行化同一任务；租约包含递增 fencing token、过期时间和续租事件。每次状态写入/工具证据写入可携带租约，旧 fencing token 或过期租约会被拒绝。`runTask` 自动申请租约并定期续租，退出时释放；进程崩溃后等待 TTL 到期再允许接管。租约是单数据库实例内的并发控制，不是跨主机高可用分布式锁。
 适配器不遵守 AbortSignal 时，循环能停止等待，但不能强杀其外部副作用；接入真实工具前必须由沙箱/进程管理层实现强制终止。
 
 不确定操作暂停后仍需人工核对和恢复入口，当前未提供 reconciliation API。失败原因分类、费用预算、结构化命令证据、鉴权、审查和真实 Harness 接入尚未实现。
@@ -43,4 +43,11 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 
 验证器自由文本只存 SHA-256，不持久化正文。此约束针对本版本新写入的验证与工具证据，不追溯清除旧数据库中的历史自由文本。任务/产物文本仍是原有可信入口，未实现通用秘密检测或凭据保管服务。
 
-本轮已补充失败原因枚举、报告与元数据持久化；进程执行强制隔离、跨进程租约及完整不可变审计服务仍未完成。SQLite 可被宿主管理员修改，不是防篡改存储。
+本轮已补充失败原因枚举、报告与元数据持久化；进程执行强制隔离、Git Worktree 生命周期管理及不确定操作核对入口仍未完成。租约数据库依赖 SQLite 所在主机的文件系统语义。SQLite 可被宿主管理员修改，不是防篡改存储。
+
+
+## Worker 租约与 fencing
+
+`runTask(store, taskId, { runtime, evaluator, workerId, timeoutMs, leaseTtlMs, signal })` 自动获取任务租约。Runtime 和 evaluator 会收到 `lease`；工具网关应在每次读/写/命令前调用 `store.assertLease(taskId, lease)`，并在写入工具证据时传入 `store.recordTool(taskId, attempt, record, lease)`。状态、检查点和验证写入也支持携带 lease。旧 worker 的 fencing token 不能覆盖新 worker 的任务状态。进程崩溃后租约自然过期；pending 外部副作用仍需核对，绝不自动重放。
+
+租约只在同一 SQLite 数据库上提供原子互斥；它不替代 OS 沙箱，也不能阻止绕过工具网关的进程直接写文件。当前 Worktree 生命周期与回收仍待实现。

@@ -4,6 +4,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
 import { initializeEvidence, recordTool, captureReport } from './evidence.js';
+import { initializeLeases, acquireTaskLease, renewTaskLease, releaseTaskLease, assertTaskLease, currentTaskLease } from './leases.js';
 
 const next = {
   created: ['intent_review'], intent_review: ['spec_review'],
@@ -22,8 +23,14 @@ export class TaskStore {
       CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL REFERENCES tasks(id), type TEXT NOT NULL, payload TEXT NOT NULL);
     `);
     initializeEvidence(this.db);
+    initializeLeases(this.db);
   }
-  recordTool(id, attempt, record) { return recordTool(this, id, attempt, record); }
+  recordTool(id, attempt, record, lease = null) { return recordTool(this, id, attempt, record, lease); }
+  acquireLease(id, owner, ttlMs, now) { return acquireTaskLease(this, id, owner, ttlMs, now); }
+  renewLease(id, lease, ttlMs, now) { return renewTaskLease(this, id, lease, ttlMs, now); }
+  releaseLease(id, lease, now) { return releaseTaskLease(this, id, lease, now); }
+  assertLease(id, lease, now) { return assertTaskLease(this, id, lease, now); }
+  currentLease(id, now) { return currentTaskLease(this, id, now); }
   report(id) { return captureReport(this, id); }
   readReport(id) {
     const row = this.db.prepare('SELECT data FROM reports WHERE id=?').get(id);
@@ -51,10 +58,11 @@ export class TaskStore {
   event(id, type, payload) {
     this.db.prepare('INSERT INTO events(task_id,type,payload) VALUES(?,?,?)').run(id, type, JSON.stringify({ ...payload, occurredAt: new Date().toISOString() }));
   }
-  mutate(id, version, type, change) {
+  mutate(id, version, type, change, lease = null) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const task = this.get(id);
+      if (lease) this.assertLease(id, lease);
       if (task.version !== version) throw new Error('Stale task version');
       const detail = change(task) ?? {};
       task.version++;
@@ -88,23 +96,23 @@ export class TaskStore {
       return { kind, ...task.approvals[kind] };
     });
   }
-  verification(id, version, verdict, evidence) {
+  verification(id, version, verdict, evidence, lease = null) {
     if (!['passed', 'failed'].includes(verdict) || typeof evidence !== 'string' || !evidence.trim()) throw new Error('Verification evidence required');
     return this.mutate(id, version, 'verification.recorded', task => {
       if (task.status !== 'verifying') throw new Error('Not verifying');
       task.verification = verdict;
       task.evidenceHash = createHash('sha256').update(evidence).digest('hex');
       return { verdict, evidenceHash: task.evidenceHash, attempt: task.repairs };
-    });
+    }, lease);
   }
-  checkpoint(id, version, detail) {
+  checkpoint(id, version, detail, lease = null) {
     return this.mutate(id, version, 'run.checkpoint', task => {
       if (!['running', 'verifying', 'repairing'].includes(task.status)) throw new Error('Not active');
       task.checkpoint = { ...task.checkpoint, ...detail };
       return { checkpoint: task.checkpoint };
-    });
+    }, lease);
   }
-  transition(id, version, status, reason = null) {
+  transition(id, version, status, reason = null, lease = null) {
     if (reason !== null && (!['failed', 'cancelled', 'paused'].includes(status) ||
       !['timeout', 'cancelled', 'repair_budget_exceeded', 'adapter_failed', 'uncertain_operation'].includes(reason))) throw new Error('Invalid stop reason');
     return this.mutate(id, version, 'task.transitioned', task => {
@@ -128,6 +136,6 @@ export class TaskStore {
       if (reason) task.stopReason = reason;
       else delete task.stopReason;
       return { reason };
-    });
+    }, lease);
   }
 }

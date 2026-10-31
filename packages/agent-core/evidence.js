@@ -31,11 +31,12 @@ export function initializeEvidence(db) {
     UNIQUE(task_id,task_version,event_sequence));`);
 }
 
-export function recordTool(store, id, attempt, record) {
+export function recordTool(store, id, attempt, record, lease = null) {
   const clean = validateRecord(record);
   store.db.exec('BEGIN IMMEDIATE');
   try {
     const task = store.get(id);
+    if (lease) store.assertLease(id, lease);
     if (!integer(attempt) || attempt !== task.repairs || !['running', 'verifying', 'failed', 'cancelled'].includes(task.status)) throw new Error('Tool evidence outside current attempt');
     store.event(id, 'tool.recorded', { attempt, operationKey: `${id}:${attempt}`, taskVersion: task.version, record: clean });
     store.db.exec('COMMIT');
