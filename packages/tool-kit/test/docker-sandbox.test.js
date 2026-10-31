@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp,rm,readFile } from 'node:fs/promises';
+import { mkdtemp,rm,readFile,writeFile,symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -66,4 +66,19 @@ test('container resource limits are applied and cancellation removes the contain
  const result=await pending;
  assert.equal(result.reason,'cancelled');
  assert.equal(allContainers(runId),'');
+});
+
+test('fails closed on credential files, secret-like source and symlinks outside the workspace',async t=>{
+ const f=await fixture(t);
+ await writeFile(join(f.root,'.env'),'OPENAI_API_KEY=sk-test-abcdefghijklmnopqrstuvwxyz');
+ await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/Sensitive credential file denied/);
+ await rm(join(f.root,'.env'));
+ await writeFile(join(f.root,'config.js'),'export const token = "ghp_abcdefghijklmnopqrstuvwxyz123456";');
+ await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/Secret-like material/);
+ await rm(join(f.root,'config.js'));
+ const outside=f.root+'-outside.txt';
+ await writeFile(outside,'outside');
+ await symlink(outside,join(f.root,'outside-link'));
+ await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/symlink leaves the mounted workspace/);
+ await rm(outside,{force:true});
 });

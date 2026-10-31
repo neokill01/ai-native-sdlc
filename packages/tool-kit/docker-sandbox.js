@@ -1,9 +1,14 @@
 import { spawn } from 'node:child_process';
-import { realpath, lstat, stat } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { realpath, lstat, stat, readdir, open } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { isAbsolute, resolve, join, relative, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
 const digest=value=>createHash('sha256').update(value).digest('hex');
+const inside=(root,target)=>{const rel=relative(root,target);return rel===''||(rel!=='..'&&!rel.startsWith(`..${sep}`)&&!isAbsolute(rel));};
+const sensitiveName=/^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|\.netrc|credentials?(?:\..*)?|secrets?(?:\..*)?|id_(?:rsa|ed25519)|\.ssh|\.aws)$/i;
+const sensitiveExtension=/\.(?:pem|p12|pfx|key|kdbx)$/i;
+const sensitiveContent=/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'][^"'\r\n]{8,}["']/i;
 const safeEnv=()=>({PATH:process.env.PATH??'/usr/bin:/bin',HOME:process.env.HOME??'/tmp',LANG:'C.UTF-8'});
 function runControl(binary,args,{timeoutMs=10_000,signal,maxOutputBytes=64*1024}={}) {
   return new Promise((resolveResult,reject)=>{
@@ -43,6 +48,42 @@ export class DockerSandbox {
     if(!Number.isSafeInteger(maxOutputBytes)||maxOutputBytes<1||maxOutputBytes>1_048_576)throw new Error('Invalid output limit');
     this.image=image;this.binary=binary;this.memory=memory;this.cpus=cpus;this.pidsLimit=pidsLimit;this.timeoutMs=timeoutMs;this.maxOutputBytes=maxOutputBytes;
   }
+  async scanWorkspace(root) {
+    let entriesSeen=0,bytesSeen=0;
+    const visit=async(directory,depth)=>{
+      if(depth>40)throw new Error('Workspace scan depth exceeded');
+      const entries=await readdir(directory,{withFileTypes:true});
+      for(const entry of entries){
+        entriesSeen++;
+        if(entriesSeen>50_000)throw new Error('Workspace scan entry budget exceeded');
+        const full=join(directory,entry.name);
+        const info=await lstat(full);
+        if(info.isSymbolicLink()){
+          let target;
+          try{target=await realpath(full);}catch{throw new Error('Broken workspace symlink denied');}
+          if(!inside(root,target))throw new Error('Workspace symlink leaves the mounted workspace');
+          continue;
+        }
+        if(sensitiveName.test(entry.name)&&!/^\.env\.(?:example|sample|template)$/i.test(entry.name))throw new Error('Sensitive credential file denied');
+        if(sensitiveExtension.test(entry.name))throw new Error('Private key or certificate file denied');
+        if(info.isDirectory()){
+          if(entry.name==='.git'||entry.name==='node_modules')continue;
+          await visit(full,depth+1);
+          continue;
+        }
+        if(!info.isFile())continue;
+        bytesSeen+=info.size;
+        if(bytesSeen>256*1024*1024)throw new Error('Workspace scan byte budget exceeded');
+        if(info.size>1_048_576)continue;
+        const file=await open(full,constants.O_RDONLY|constants.O_NOFOLLOW);
+        try{
+          const content=await file.readFile();
+          if(!content.includes(0)&&sensitiveContent.test(content.toString('utf8')))throw new Error('Secret-like material in workspace denied');
+        }finally{await file.close();}
+      }
+    };
+    await visit(root,0);
+  }
   async validateWorkspace(workspace) {
     if(process.platform!=='linux')throw new Error('DockerSandbox v1 currently requires Linux');
     if(typeof workspace!=='string'||!isAbsolute(workspace)||workspace.includes(',')||workspace.includes('\0'))throw new Error('Absolute workspace path required');
@@ -51,6 +92,7 @@ export class DockerSandbox {
     const path=await realpath(workspace),details=await stat(path);
     if(!details.isDirectory()||path==='/'||path==='/home'||path==='/root')throw new Error('Invalid workspace directory');
     if(typeof process.getuid==='function'&&details.uid!==process.getuid())throw new Error('Workspace must be owned by the current user');
+    await this.scanWorkspace(path);
     return path;
   }
   async killContainer(name) {
