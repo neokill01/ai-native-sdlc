@@ -76,7 +76,7 @@ export class DockerSandbox {
       '--ulimit','nofile=1024:1024','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m',
       '--user',`${uid}:${gid}`,'--workdir','/workspace','--init',
       '--env','HOME=/tmp','--env','PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-      '--env','LANG=C.UTF-8','--mount',`type=bind,src=${root},dst=/workspace,rw`,
+      '--env','LANG=C.UTF-8','--mount',`type=bind,src=${root},dst=/workspace`,
       '--label','devos.managed=true','--label',`devos.task=${digest(taskId).slice(0,16)}`,
     ];
     const policyHash=digest(JSON.stringify({image:this.image,policy,commandShape:command[0]}));
