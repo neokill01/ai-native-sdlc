@@ -12,7 +12,7 @@
     "test": "node --test packages/*/test/*.test.js",
     "test:guards": "python3 -m unittest discover -s tests -v",
     "eval": "bash evals/check.sh",
-    "check": "node --check packages/agent-core/index.js && node --check packages/agent-core/loop.js && node --check packages/agent-core/demo.js && node --check packages/tool-kit/index.js && node --check packages/agent-core/workspace-demo.js && node --check packages/agent-core/evidence.js && node --check packages/agent-core/report-cli.js && node --check packages/agent-core/leases.js && node --check packages/agent-core/worktrees.js && node --check packages/tool-kit/docker-sandbox.js",
+    "check": "node --check packages/agent-core/index.js && node --check packages/agent-core/loop.js && node --check packages/agent-core/demo.js && node --check packages/tool-kit/index.js && node --check packages/agent-core/workspace-demo.js && node --check packages/agent-core/evidence.js && node --check packages/agent-core/report-cli.js && node --check packages/agent-core/leases.js && node --check packages/agent-core/worktrees.js && node --check packages/tool-kit/docker-sandbox.js && node --check packages/agent-core/openai-runtime.js",
     "demo:loop": "node packages/agent-core/demo.js",
     "demo:workspace": "node packages/agent-core/workspace-demo.js",
     "report": "node packages/agent-core/report-cli.js",

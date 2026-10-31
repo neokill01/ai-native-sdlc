@@ -1,6 +1,6 @@
 /** Filesystem policy + trusted local command harness. NOT an OS sandbox. */
 import { constants } from 'node:fs';
-import { lstat, realpath, open, mkdir } from 'node:fs/promises';
+import { lstat, realpath, open, mkdir, readdir } from 'node:fs/promises';
 import { resolve, relative, sep, dirname, isAbsolute } from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -48,6 +48,29 @@ export class WorkspaceTools {
     }
     return { path, local };
   }
+  async list(name = '.') {
+    this.assertLease();
+    let directory = this.root;
+    let local = '.';
+    if (name !== '.' && name !== '') {
+      const target = await this.path(name);
+      directory = target.path;
+      local = target.local;
+    }
+    const info = await lstat(directory);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Directory listing denied');
+    const entries = await readdir(directory, { withFileTypes: true });
+    const result = [];
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.name === '.git' || entry.name === '.env' || entry.name.startsWith('.env.')) continue;
+      const full = resolve(directory, entry.name);
+      const details = await lstat(full);
+      if (details.isSymbolicLink() || (!details.isDirectory() && !details.isFile())) continue;
+      result.push({ path: local === '.' ? entry.name : `${local}/${entry.name}`, type: details.isDirectory() ? 'directory' : 'file', ...(details.isFile() ? { size: details.size } : {}) });
+      if (result.length >= 200) break;
+    }
+    return result;
+  }
   async read(name) {
     const { path, local } = await this.path(name);
     const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -63,7 +86,7 @@ export class WorkspaceTools {
   async write(name, content) {
     if (typeof content !== 'string' || Buffer.byteLength(content) > 1024 * 1024 || sensitive.test(content)) throw new Error('Invalid or sensitive content');
     const { path, local } = await this.path(name);
-    if (!this.writable.some(p => local === p || (p.endsWith('/') && local.startsWith(p)))) throw new Error('Write outside allowlist');
+    if (!this.writable.some(p => p === '**' || local === p || (p.endsWith('/') && local.startsWith(p)))) throw new Error('Write outside allowlist');
     if (!(await this.authorizeWrite())) throw new Error('Approved running task required');
     this.assertLease();
     await mkdir(dirname(path), { recursive: true });

@@ -65,3 +65,12 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 
 
 `runTask` 遇到 `checkpoint.operation=pending` 时会暂停，不会自动重放。可信审批入口可调用 `store.resolvePending(taskId, version, { actor, decision, evidence })`：`completed` 表示人工确认外部副作用已完成，恢复后直接进入验证；`not_executed` 表示人工确认未执行，恢复后允许使用原任务/修复轮次的稳定 operationKey 重新执行。系统只保存核对证据的 SHA-256，不保存自由文本。该入口必须由后续 API 层做身份认证与授权，不能直接暴露给未认证调用者。
+
+
+## 真实模型 Runtime（Responses API）
+
+OpenAIResponsesRuntime 使用官方 Responses API function calling。API Key 仅从宿主进程的 OPENAI_API_KEY 读取，通过 HTTPS Bearer 认证；不会写入任务库、工具输出或 Docker 容器环境。模型通过 list_files/read_file/write_file/run_command 四个严格 schema 工具工作；文件工具受工作区路径与当前 lease 约束，命令只在 DockerSandbox 内运行。每轮请求设置 store=false，并把前一响应的全部 output items（包括 reasoning/tool-call items）与 function_call_output 回传，避免丢失上下文。
+
+生产配置需显式提供 DEVOS_OPENAI_MODEL；可配置 maxTurns、maxToolCalls、maxTotalTokens、maxOutputTokens。若设置 maxCostUsd，必须同时提供当前模型的 input/output 每百万 token 价格，系统不会猜测价格。model.usage 事件仅保存模型名、token 数和估算费用，不保存 API Key 或原始响应正文。
+
+ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列表，独立在 DockerSandbox 运行；未配置验证命令不能通过验收。真实 API 调用需要宿主环境提供 OPENAI_API_KEY 与模型访问权限；ChatGPT 订阅不自动等于 API 额度。此版本通过 mock Responses API 做协议/工具流测试，尚未使用真实 API Key 完成端到端模型任务。
