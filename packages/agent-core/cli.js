@@ -48,9 +48,22 @@ Commands:
 Run requires OPENAI_API_KEY and DEVOS_OPENAI_MODEL (or --model). API credentials are read only by the host process and are never passed into the sandbox.
 `);
 }
+const allowedOptions = {
+  create: ['db','title'],
+  artifact: ['db','task','kind','file'],
+  approve: ['db','task','actor'],
+  status: ['db','task'],
+  report: ['db','task'],
+  resolve: ['db','task','actor','decision','evidence','evidenceFile'],
+  run: ['db','task','repository','worktreeRoot','model','baseRef','workerId','timeoutMs','maxTotalTokens','maxCostUsd','inputUsdPerMillion','outputUsdPerMillion','image','memory','cpus','pidsLimit','commandTimeoutMs','maxOutputBytes','maxTurns','maxToolCalls','maxOutputTokens','requestTimeoutMs'],
+};
 export async function main(argv=process.argv.slice(2)) {
-  const {command,options}=parseArgs(argv);
+  const {command,options,positional}=parseArgs(argv);
   if(!command||command==='help'||options.help){help();return 0;}
+  if(positional.length)throw new Error('Unexpected positional arguments');
+  if(!allowedOptions[command])throw new Error(`Unknown command: ${command}`);
+  for(const key of Object.keys(options))if(!allowedOptions[command].includes(key))throw new Error(`Unknown option --${key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())}`);
+  if(command==='resolve'&&Boolean(options.evidence)===Boolean(options.evidenceFile))throw new Error('Provide exactly one of --evidence or --evidence-file');
   if(command==='create')return withStore(options,store=>{
     const task=store.create(required(options,'title'));
     json({id:task.id,status:task.status,version:task.version});

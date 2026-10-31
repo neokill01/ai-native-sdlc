@@ -68,6 +68,6 @@ test('CLI never accepts API credentials as command-line arguments and fails clos
  const id=created.json().id;
  const result=call(['run','--db',f.db,'--task',id,'--repository',f.root,'--worktree-root',join(f.root,'worktrees'),'--model','gpt-6-astra','--api-key','secret'],{...process.env,OPENAI_API_KEY:''});
  assert.notEqual(result.status,0);
- assert.match(result.stderr,/OPENAI_API_KEY is required|Unknown command/);
+ assert.match(result.stderr,/Unknown option --api-key/);
  assert.ok(!result.stderr.includes('secret'));
 });
