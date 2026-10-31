@@ -44,8 +44,8 @@ test('Responses runtime executes model tool calls in sequence and evaluates the 
   response([{type:'message',role:'assistant',content:[{type:'output_text',text:'Implemented src/value.js and verified it.'}]}]),
  ];
  const fetchImpl=async(url,options)=>{requests.push({url,options,body:JSON.parse(options.body)});return responses.shift();};
- const runtime=new OpenAIResponsesRuntime({store,sandbox,apiKey:'test-api-secret',model:'gpt-6-astra',fetchImpl});
- const evaluator=new ApprovedPlanEvaluator({store,sandbox});
+ const runtime=new OpenAIResponsesRuntime({store:f.store,sandbox,apiKey:'test-api-secret',model:'gpt-6-astra',fetchImpl});
+ const evaluator=new ApprovedPlanEvaluator({store:f.store,sandbox});
  const completed=await runTask(f.store,task.id,{runtime,evaluator});
  assert.equal(completed.status,'completed');
  assert.equal(await readFile(join(f.root,'src/value.js'),'utf8'),'export const value = 42;\n');
