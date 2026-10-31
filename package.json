@@ -16,7 +16,8 @@
     "demo:loop": "node packages/agent-core/demo.js",
     "demo:workspace": "node packages/agent-core/workspace-demo.js",
     "report": "node packages/agent-core/report-cli.js",
-    "test:sandbox": "node --test packages/tool-kit/test/docker-sandbox.test.js"
+    "test:sandbox": "node --test packages/tool-kit/test/docker-sandbox.test.js",
+    "devos": "node packages/agent-core/cli.js"
   },
   "bin": {
     "devos": "packages/agent-core/cli.js"
