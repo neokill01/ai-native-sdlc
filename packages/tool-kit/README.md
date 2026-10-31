@@ -21,3 +21,9 @@
 可配置同步 `onRecord(record)`，由应用绑定到当前任务的 `store.recordTool(id, attempt, record)`。回调返回成功后才向调用者确认工具成功。内存 records 仅是辅助；已接线的真实工作区样例使用 SQLite 保存证据。命令启动失败也生成 spawn_failed 记录；原始输出不保存。
 
 文件写入/进程结果与数据库不构成一个跨系统事务；崩溃窗口仍依赖 pending 操作核对，不能声称 exactly-once 或完整安全审计。未接线 onRecord 的普通工具实例仍只保留内存记录。
+
+## Docker OS sandbox
+
+DockerSandbox runs allowlisted argument arrays in a pre-pulled image with network disabled, a read-only container root, all Linux capabilities dropped, no-new-privileges, bounded memory/CPU/PIDs, a noexec tmpfs, and only the task worktree mounted read-write. It passes only a minimal environment and requires a live task lease guard before and after execution. Raw command output is returned in memory to the trusted adapter, while the audit callback receives only bounded metadata and hashes.
+
+The Docker daemon and image are part of the trusted computing base. The host must protect access to the Docker socket; never mount the Docker socket, host home, credentials, or arbitrary host paths into the container. This is Linux container isolation, not a VM boundary; use a hardened daemon/VM for hostile multi-tenant workloads.

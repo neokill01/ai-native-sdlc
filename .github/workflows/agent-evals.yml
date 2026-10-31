@@ -46,3 +46,18 @@ jobs:
         run: npm test
       - name: Test guards and eval runner
         run: npm run test:guards
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Pull pinned sandbox image
+        run: docker pull node:24-bookworm-slim
+      - name: Verify Docker sandbox isolation
+        run: npm run test:sandbox
