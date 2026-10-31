@@ -34,16 +34,36 @@ test('network, root filesystem and Linux capabilities are restricted', {skip}, a
  const result=await f.sandbox.run({workspace:f.root,command:['node','-e',script],assertLease:f.guard});
  assert.equal(result.exitCode,0,result.output);
 });
+function runningContainer(runId){return spawnSync('docker',['ps','-q','--filter',`label=devos.run=${runId}`],{encoding:'utf8'}).stdout.trim();}
+function allContainers(runId){return spawnSync('docker',['ps','-aq','--filter',`label=devos.run=${runId}`],{encoding:'utf8'}).stdout.trim();}
 test('timeout kills the container and bounds output', {skip}, async t=>{
  const f=await fixture(t);
  const timed=await f.sandbox.run({workspace:f.root,command:['node','-e','setInterval(()=>{},1000)'],timeoutMs:1_000,assertLease:f.guard});
  assert.equal(timed.reason,'timeout');
+ assert.equal(allContainers(timed.runId),'');
  const limited=await f.sandbox.run({workspace:f.root,command:['node','-e','process.stdout.write("x".repeat(10000))'],maxOutputBytes:128,assertLease:f.guard});
  assert.equal(limited.reason,'output_limit');
  assert.ok(limited.outputBytes>=128);
+ assert.equal(allContainers(limited.runId),'');
 });
 test('host environment secrets and sibling files are not exposed to the container', {skip}, async t=>{ const f=await fixture(t); const sibling=f.root+'-host-secret.txt'; const { writeFile }=await import('node:fs/promises'); await writeFile(sibling,'must-not-be-mounted'); const previous=process.env.DEVOS_SANDBOX_SECRET; process.env.DEVOS_SANDBOX_SECRET='must-not-forward'; try { const script='const fs=require("fs");if(process.env.DEVOS_SANDBOX_SECRET)process.exit(31);if(fs.existsSync("'+sibling+'"))process.exit(32);'; const result=await f.sandbox.run({workspace:f.root,command:['node','-e',script],assertLease:f.guard}); assert.equal(result.exitCode,0,result.output); } finally { if(previous===undefined)delete process.env.DEVOS_SANDBOX_SECRET;else process.env.DEVOS_SANDBOX_SECRET=previous; await rm(sibling,{force:true}); } });
 test('lease is checked before starting the sandbox and after completion', {skip}, async t=>{
  const f=await fixture(t);
  await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:()=>{throw new Error('lease lost')}}),/lease lost/);
+});
+
+test('container resource limits are applied and cancellation removes the container', {skip}, async t=>{
+ const f=await fixture(t);
+ const runId='a'.repeat(24),controller=new AbortController();
+ const pending=f.sandbox.run({workspace:f.root,command:['node','-e','setInterval(()=>{},1000)'],runId,signal:controller.signal,assertLease:f.guard});
+ let id='';
+ for(let i=0;i<30&&!id;i++){await new Promise(resolve=>setTimeout(resolve,100));id=runningContainer(runId);}
+ assert.ok(id,'sandbox container did not start');
+ const inspected=spawnSync('docker',['inspect','--format','{{.HostConfig.NetworkMode}}|{{.HostConfig.ReadonlyRootfs}}|{{.HostConfig.Memory}}|{{.HostConfig.PidsLimit}}|{{.HostConfig.NanoCpus}}|{{json .HostConfig.CapDrop}}',id],{encoding:'utf8'});
+ assert.equal(inspected.status,0,inspected.stderr);
+ assert.equal(inspected.stdout.trim(),'none|true|536870912|128|1000000000|["ALL"]');
+ controller.abort(new Error('cancelled'));
+ const result=await pending;
+ assert.equal(result.reason,'cancelled');
+ assert.equal(allContainers(runId),'');
 });

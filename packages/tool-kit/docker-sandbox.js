@@ -57,18 +57,19 @@ export class DockerSandbox {
     await runControl(this.binary,['kill',name],{timeoutMs:5_000}).catch(()=>{});
     await runControl(this.binary,['rm','-f',name],{timeoutMs:5_000}).catch(()=>{});
   }
-  async run({workspace,command,taskId='unassigned',toolName='command',signal,timeoutMs=this.timeoutMs,maxOutputBytes=this.maxOutputBytes,assertLease,onRecord=()=>{}}={}) {
+  async run({workspace,command,taskId='unassigned',toolName='command',runId=randomUUID().replaceAll('-','').slice(0,24),signal,timeoutMs=this.timeoutMs,maxOutputBytes=this.maxOutputBytes,assertLease,onRecord=()=>{}}={}) {
     if(typeof assertLease!=='function')throw new Error('Current task lease guard required');
     if(typeof onRecord!=='function')throw new Error('Invalid sandbox audit sink');
     if(!Array.isArray(command)||command.length<1||command.length>128||command.some(x=>typeof x!=='string'||x.includes('\0')||x.length>8192))throw new Error('Command must be a bounded argument array');
     if(typeof toolName!=='string'||!/^[a-zA-Z0-9_.-]{1,64}$/.test(toolName))throw new Error('Invalid tool name');
+    if(typeof runId!=='string'||!/^[a-f0-9]{24}$/.test(runId))throw new Error('Invalid sandbox run id');
     if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1_000||timeoutMs>900_000||!Number.isSafeInteger(maxOutputBytes)||maxOutputBytes<1||maxOutputBytes>1_048_576)throw new Error('Invalid execution limits');
     signal?.throwIfAborted();
     assertLease();
     const root=await this.validateWorkspace(workspace);
     const uid=typeof process.getuid==='function'?process.getuid():1000;
     const gid=typeof process.getgid==='function'?process.getgid():1000;
-    const name=`devos-${randomUUID().replaceAll('-','').slice(0,24)}`;
+    const name=`devos-${runId}`;
     const policy=[
       '--rm','--name',name,'--network','none','--read-only','--cap-drop','ALL',
       '--security-opt','no-new-privileges:true','--pids-limit',String(this.pidsLimit),
@@ -77,7 +78,7 @@ export class DockerSandbox {
       '--user',`${uid}:${gid}`,'--workdir','/workspace','--init',
       '--env','HOME=/tmp','--env','PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       '--env','LANG=C.UTF-8','--mount',`type=bind,src=${root},dst=/workspace`,
-      '--label','devos.managed=true','--label',`devos.task=${digest(taskId).slice(0,16)}`,
+      '--label','devos.managed=true','--label',`devos.task=${digest(taskId).slice(0,16)}`,'--label',`devos.run=${runId}`,
     ];
     const policyHash=digest(JSON.stringify({image:this.image,policy,commandShape:command[0]}));
     const createdAt=Date.now();
@@ -88,7 +89,7 @@ export class DockerSandbox {
       const output=String(error.message??error);
       const record={tool:'command',command:toolName,exitCode:null,signal:null,reason:'spawn_failed',durationMs:Date.now()-createdAt,outputBytes:Buffer.byteLength(output),outputHash:digest(output)};
       onRecord(structuredClone(record));
-      return {...record,policyHash,output:output.slice(0,maxOutputBytes)};
+      return {...record,runId,policyHash,output:output.slice(0,maxOutputBytes)};
     }
     if(created.reason||created.code!==0){
       await this.killContainer(name);
@@ -131,6 +132,6 @@ export class DockerSandbox {
     const record={tool:'command',command:toolName,exitCode:reason?null:outcome.code,signal:outcome.signal,reason,durationMs:Date.now()-started,outputBytes:size,outputHash:digest(output)};
     const saved=onRecord(structuredClone(record));
     if(saved&&typeof saved.then==='function')throw new Error('Sandbox audit sink must be synchronous');
-    return {...record,policyHash,output:output.toString('utf8')};
+    return {...record,runId,policyHash,output:output.toString('utf8')};
   }
 }
