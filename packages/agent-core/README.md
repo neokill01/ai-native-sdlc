@@ -51,3 +51,11 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 `runTask(store, taskId, { runtime, evaluator, workerId, timeoutMs, leaseTtlMs, signal })` 自动获取任务租约。Runtime 和 evaluator 会收到 `lease`；工具网关应在每次读/写/命令前调用 `store.assertLease(taskId, lease)`，并在写入工具证据时传入 `store.recordTool(taskId, attempt, record, lease)`。状态、检查点和验证写入也支持携带 lease。旧 worker 的 fencing token 不能覆盖新 worker 的任务状态。进程崩溃后租约自然过期；pending 外部副作用仍需核对，绝不自动重放。
 
 租约只在同一 SQLite 数据库上提供原子互斥；它不替代 OS 沙箱，也不能阻止绕过工具网关的进程直接写文件。当前 Worktree 生命周期与回收仍待实现。
+
+
+## Git Worktree 隔离与恢复
+
+
+`GitWorktreeManager` 为任务创建独立 Git Worktree 和 fencing-token 专属分支；工作树根目录必须与主仓库互不嵌套。`runTask` 可通过 `worktreeManager` 与 `repository` 参数把工作区路径传给 Runtime 和 evaluator。租约失效的旧 Worker 在 WorkspaceTools 的每次文件/命令操作前会被拒绝。恢复时优先复用任务已登记的 ready worktree；pending 外部副作用仍暂停，不自动重放。
+
+工作树会保留供审查，不会在任务结束时自动强制删除。`remove()` 默认只删除 clean worktree；有未提交改动时 Git 会拒绝删除，只有明确传入 `force: true` 才会丢弃。`reconcile()` 根据 `git worktree list --porcelain` 核对创建/删除中断；无法确认的路径标记 orphaned/missing，留待人工处理。该功能是 Git 工作区隔离，不等于 OS 级安全沙箱。

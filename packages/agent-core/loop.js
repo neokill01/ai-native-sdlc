@@ -1,11 +1,17 @@
 /** Trusted adapters only. No tool execution or sandbox is provided here. */
-export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_000, signal, workerId = `worker-${process.pid}`, leaseTtlMs = Math.min(3_600_000, Math.max(timeoutMs + 30_000, 60_000)) } = {}) {
+export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_000, signal, workerId = `worker-${process.pid}`, leaseTtlMs = Math.min(3_600_000, Math.max(timeoutMs + 30_000, 60_000)), worktreeManager, repository, baseRef = 'HEAD' } = {}) {
   if (!runtime?.execute || !evaluator?.verify || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid adapters or timeout');
   if (!store.acquireLease || !store.renewLease || !store.releaseLease) throw new Error('Fenced task lease support required');
   if (timeoutMs > 3_570_000 || !Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < timeoutMs || leaseTtlMs > 3_600_000) throw new Error('Invalid execution or lease budget');
   const lease = store.acquireLease(id, workerId, leaseTtlMs);
   let task = store.get(id);
   if (!['queued', 'running', 'verifying', 'repairing'].includes(task.status)) { store.releaseLease(id, lease); throw new Error('Task is not runnable'); }
+  let worktree = null;
+  if (worktreeManager) {
+    if (!repository) { store.releaseLease(id, lease); throw new Error('Repository is required when using Git Worktrees'); }
+    try { worktree = await worktreeManager.acquire({ taskId: id, lease, repository, baseRef, signal }); }
+    catch (error) { try { store.releaseLease(id, lease); } catch {} throw error; }
+  }
   // A pending side effect after a crash is uncertain. Never replay it automatically.
   if (task.checkpoint?.operation === 'pending') {
     try {
@@ -51,14 +57,14 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
         // Persist intent before handing control to an adapter; key is stable for reconciliation.
         const operationKey = `${id}:${task.repairs}`;
         task = store.checkpoint(id, task.version, { deadline, operation: 'pending', operationKey }, activeLease);
-        await invoke(abortSignal => runtime.execute({ task: structuredClone(task), operationKey, signal: abortSignal, lease: activeLease }));
+        await invoke(abortSignal => runtime.execute({ task: structuredClone(task), operationKey, signal: abortSignal, lease: activeLease, workspace: worktree?.path ?? null, worktree }));
         task = store.checkpoint(id, task.version, { operation: 'finished' }, activeLease);
         task = store.transition(id, task.version, 'verifying', null, activeLease);
       }
       if (task.status === 'verifying') {
         // Verification adapters must be read-only/repeatable. Persist deadline on recovery too.
         task = store.checkpoint(id, task.version, { deadline }, activeLease);
-        const result = await invoke(abortSignal => evaluator.verify({ task: structuredClone(task), signal: abortSignal, lease: activeLease }));
+        const result = await invoke(abortSignal => evaluator.verify({ task: structuredClone(task), signal: abortSignal, lease: activeLease, workspace: worktree?.path ?? null, worktree }));
         task = store.verification(id, task.version, result?.verdict, result?.evidence, activeLease);
         if (task.verification === 'passed') return store.transition(id, task.version, 'completed', null, activeLease);
         if (task.repairs >= task.maxRepairs) return store.transition(id, task.version, 'failed', 'repair_budget_exceeded', activeLease);

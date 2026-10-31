@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
 import { initializeEvidence, recordTool, captureReport } from './evidence.js';
 import { initializeLeases, acquireTaskLease, renewTaskLease, releaseTaskLease, assertTaskLease, currentTaskLease } from './leases.js';
+import { initializeWorktrees } from './worktrees.js';
 
 const next = {
   created: ['intent_review'], intent_review: ['spec_review'],
@@ -24,6 +25,7 @@ export class TaskStore {
     `);
     initializeEvidence(this.db);
     initializeLeases(this.db);
+    initializeWorktrees(this.db);
   }
   recordTool(id, attempt, record, lease = null) { return recordTool(this, id, attempt, record, lease); }
   acquireLease(id, owner, ttlMs, now) { return acquireTaskLease(this, id, owner, ttlMs, now); }
@@ -31,6 +33,47 @@ export class TaskStore {
   releaseLease(id, lease, now) { return releaseTaskLease(this, id, lease, now); }
   assertLease(id, lease, now) { return assertTaskLease(this, id, lease, now); }
   currentLease(id, now) { return currentTaskLease(this, id, now); }
+  reserveWorktree(id, lease, record) {
+    if (!record || typeof record.path !== 'string' || typeof record.branch !== 'string' || typeof record.baseRef !== 'string' || typeof record.repository !== 'string') throw new Error('Invalid worktree record');
+    this.assertLease(id, lease);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.assertLease(id, lease);
+      const now = new Date().toISOString();
+      this.db.prepare('INSERT INTO task_worktrees(task_id,fencing_token,path,branch,base_ref,repository,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id, lease.fencingToken, record.path, record.branch, record.baseRef, record.repository, 'creating', now, now);
+      this.event(id, 'worktree.create_requested', { fencingToken: lease.fencingToken, branch: record.branch, pathHash: createHash('sha256').update(record.path).digest('hex') });
+      this.db.exec('COMMIT');
+      return this.getWorktree(id, lease, lease.fencingToken);
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  getWorktree(id, lease, fencingToken = lease?.fencingToken) {
+    this.assertLease(id, lease);
+    if (!Number.isSafeInteger(fencingToken) || fencingToken > lease.fencingToken) throw new Error('Invalid worktree fencing token');
+    const row = this.db.prepare('SELECT * FROM task_worktrees WHERE task_id=? AND fencing_token=?').get(id, fencingToken);
+    if (!row) throw new Error('Worktree record not found');
+    return row;
+  }
+  listWorktrees(id, lease) {
+    this.assertLease(id, lease);
+    return this.db.prepare('SELECT * FROM task_worktrees WHERE task_id=? ORDER BY fencing_token').all(id);
+  }
+  updateWorktree(id, lease, fencingToken, state, headSha = null) {
+    const allowed = { creating: ['ready','failed','orphaned','missing'], ready: ['ready','removing','missing','orphaned'], removing: ['removed','ready','orphaned'], failed: ['orphaned'], missing: ['ready','orphaned'], orphaned: ['removing','removed'], removed: [] };
+    if (!Object.hasOwn(allowed, state)) throw new Error('Invalid worktree state');
+    this.assertLease(id, lease);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.assertLease(id, lease);
+      if (fencingToken > lease.fencingToken) throw new Error('Stale worktree fencing token');
+      const current = this.db.prepare('SELECT state FROM task_worktrees WHERE task_id=? AND fencing_token=?').get(id, fencingToken);
+      if (!current || (current.state !== state && !allowed[current.state]?.includes(state))) throw new Error('Invalid worktree state transition');
+      const now = new Date().toISOString();
+      this.db.prepare('UPDATE task_worktrees SET state=?,head_sha=COALESCE(?,head_sha),updated_at=? WHERE task_id=? AND fencing_token=?').run(state, headSha, now, id, fencingToken);
+      this.event(id, 'worktree.state_changed', { fencingToken, from: current.state, to: state, headSha });
+      this.db.exec('COMMIT');
+      return this.getWorktree(id, lease, fencingToken);
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
   report(id) { return captureReport(this, id); }
   readReport(id) {
     const row = this.db.prepare('SELECT data FROM reports WHERE id=?').get(id);
