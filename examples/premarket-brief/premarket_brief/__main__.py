@@ -48,8 +48,8 @@ def render(brief) -> str:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="premarket_brief", description="开市前市场简报")
     ap.add_argument("--source", default="sample", choices=["sample"], help="数据源（示例内置样例源）")
-    ap.add_argument("--watchlist-threshold", type=float, default=2.0, help="自选股异动阈值（%），默认 2.0")
-    ap.add_argument("--big-move-threshold", type=float, default=1.0, help="显著异动阈值（%），默认 1.0")
+    ap.add_argument("--watchlist-threshold", type=float, default=2.0, help="自选股异动阈值（百分比），默认 2.0")
+    ap.add_argument("--big-move-threshold", type=float, default=1.0, help="显著异动阈值（百分比），默认 1.0")
     ap.add_argument("--top-news", type=int, default=5, help="重点新闻条数，默认 5")
     ap.add_argument("--day", default=None, help="指定简报日期（默认当天，便于复现可传入固定日期）")
     args = ap.parse_args(argv)

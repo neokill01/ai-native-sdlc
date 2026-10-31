@@ -12,15 +12,52 @@ on:
       - 'AGENT.md'
       - 'agents/**'
       - 'evals/**'
+      - 'tests/**'
+      - 'packages/**'
+      - 'package.json'
+      - '.github/workflows/agent-evals.yml'
       - 'docs/playbook.md'
   schedule:
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   evals:
-    runs-on: [self-hosted, Linux, X64, ai-native-ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Run eval suite
         run: ./evals/check.sh
+
+  agent-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check core syntax
+        run: npm run check
+      - name: Test task state and persistence
+        run: npm test
+      - name: Test guards and eval runner
+        run: npm run test:guards
+
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Pull pinned sandbox image
+        run: docker pull node:24-bookworm-slim
+      - name: Verify Docker sandbox isolation
+        run: npm run test:sandbox
