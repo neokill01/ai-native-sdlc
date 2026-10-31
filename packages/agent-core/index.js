@@ -206,3 +206,5 @@ export class TaskStore {
 }
 
 export { OpenAIResponsesRuntime, ApprovedPlanEvaluator } from './openai-runtime.js';
+
+export { runTask } from './loop.js';
