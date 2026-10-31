@@ -8,7 +8,7 @@ const digest=value=>createHash('sha256').update(value).digest('hex');
 const inside=(root,target)=>{const rel=relative(root,target);return rel===''||(rel!=='..'&&!rel.startsWith(`..${sep}`)&&!isAbsolute(rel));};
 const sensitiveName=/^(?:\.env(?:\..*)?|\.npmrc|\.pypirc|\.netrc|credentials?(?:\..*)?|secrets?(?:\..*)?|id_(?:rsa|ed25519)|\.ssh|\.aws)$/i;
 const sensitiveExtension=/\.(?:pem|p12|pfx|key|kdbx)$/i;
-const sensitiveContent=/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'][^"'\r\n]{8,}["']/i;
+const sensitiveContent=/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]{32,}?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*["'](?!(?:[^"']*(?:placeholder|example|dummy|test|changeme|redacted)))[^"'\r\n]{8,}["']/i;
 const safeEnv=()=>({PATH:process.env.PATH??'/usr/bin:/bin',HOME:process.env.HOME??'/tmp',LANG:'C.UTF-8'});
 function runControl(binary,args,{timeoutMs=10_000,signal,maxOutputBytes=64*1024}={}) {
   return new Promise((resolveResult,reject)=>{

@@ -82,3 +82,8 @@ test('fails closed on credential files, secret-like source and symlinks outside 
  await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/symlink leaves the mounted workspace/);
  await rm(outside,{force:true});
 });
+
+test('repository source tree passes the credential preflight scanner',async()=>{
+ const sandbox=new DockerSandbox();
+ await sandbox.validateWorkspace(process.cwd());
+});
