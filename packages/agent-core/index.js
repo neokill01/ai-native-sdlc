@@ -35,7 +35,7 @@ export class TaskStore {
   assertLease(id, lease, now) { return assertTaskLease(this, id, lease, now); }
   currentLease(id, now) { return currentTaskLease(this, id, now); }
   reserveWorktree(id, lease, record) {
-    if (!record || typeof record.path !== 'string' || !isAbsolute(record.path) || typeof record.repository !== 'string' || !isAbsolute(record.repository) || typeof record.branch !== 'string' || !/^devos\\/tasks\\/[a-zA-Z0-9-]{1,64}\\/fence-[1-9][0-9]*$/.test(record.branch) || typeof record.baseRef !== 'string' || !record.baseRef || record.baseRef.length > 256) throw new Error('Invalid worktree record');
+    if (!record || typeof record.path !== 'string' || !isAbsolute(record.path) || typeof record.repository !== 'string' || !isAbsolute(record.repository) || typeof record.branch !== 'string' || (() => { const parts = record.branch.split('/'); return parts.length !== 4 || parts[0] !== 'devos' || parts[1] !== 'tasks' || !/^[a-zA-Z0-9-]{1,64}$/.test(parts[2]) || !/^fence-[1-9][0-9]*$/.test(parts[3]); })() || typeof record.baseRef !== 'string' || !record.baseRef || record.baseRef.length > 256) throw new Error('Invalid worktree record');
     this.assertLease(id, lease);
     this.db.exec('BEGIN IMMEDIATE');
     try {

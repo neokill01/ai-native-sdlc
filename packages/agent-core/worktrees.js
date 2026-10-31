@@ -97,6 +97,7 @@ export class GitWorktreeManager {
     await runGit(repo,['rev-parse','--verify',`${baseRef}^{commit}`],{timeoutMs:this.timeoutMs,signal});
     const existing=this.store.listWorktrees(taskId,lease).sort((a,b)=>b.fencing_token-a.fencing_token);
     for(const item of existing){
+      if(item.fencing_token===lease.fencingToken&&item.state==='failed')throw new Error('Previous worktree creation failed; acquire a new lease before retrying');
       if(item.state==='ready'||item.state==='creating'||item.state==='removing'){
         const recovered=await this.reconcile({taskId,lease,fencingToken:item.fencing_token,signal});
         if(recovered.state==='ready')return recovered;
