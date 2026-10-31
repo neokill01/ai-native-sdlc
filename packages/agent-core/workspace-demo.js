@@ -21,8 +21,10 @@ export async function workspaceDemo() {
       task = store.transition(task.id, task.version, target);
     }
     const id = task.id;
+    let activeLease;
     const tools = await WorkspaceTools.create({ root, writable: ['src/add.mjs'], trustedLocal: true,
-      onRecord: record => store.recordTool(id, store.get(id).repairs, record),
+      assertLease: () => { if (!activeLease) throw new Error('Task lease unavailable'); store.assertLease(id, activeLease); },
+      onRecord: record => store.recordTool(id, store.get(id).repairs, record, activeLease),
       authorizeWrite: () => {
         const current = store.get(id);
         return current.status === 'running' && ['intent', 'spec', 'plan'].every(k => current.approvals[k]?.hash === current.artifacts[k]?.hash);
@@ -32,7 +34,8 @@ export async function workspaceDemo() {
     let attempts = 0;
     const commands = [];
     const result = await runTask(store, id, {
-      runtime: { execute: async ({ signal }) => {
+      runtime: { execute: async ({ signal, lease }) => {
+        activeLease = lease;
         signal.throwIfAborted();
         attempts++;
         await tools.write('src/add.mjs', attempts === 1 ? 'export const add = (a,b) => a-b;\n' : 'export const add = (a,b) => a+b;\n');

@@ -72,3 +72,18 @@ test('spawn failure retains metadata, and persistence failure rejects tool succe
   });
   await assert.rejects(() => broken.command('test'), /audit persistence/);
 });
+
+test('revoked task lease blocks file and command tools before side effects', async t => {
+  let leaseValid = true;
+  const { root, tools } = await setup(t, {
+    trustedLocal: true,
+    commands: { test: { executable: process.execPath, args: ['-e', 'process.exit(0)'] } },
+    assertLease: () => { if (!leaseValid) throw new Error('Task lease lost'); },
+  });
+  await tools.write('src/before.js', 'safe');
+  leaseValid = false;
+  await assert.rejects(() => tools.write('src/after.js', 'must not exist'), /lease lost/);
+  await assert.rejects(() => tools.read('src/before.js'), /lease lost/);
+  await assert.rejects(() => tools.command('test'), /lease lost/);
+  await assert.rejects(() => readFile(join(root, 'src/after.js'), 'utf8'));
+});

@@ -13,8 +13,8 @@ npm run demo:loop
 
 `runTask(store, taskId, { runtime, evaluator, timeoutMs, signal })` 只接受已排队或可恢复的运行任务。
 
-- `runtime.execute({ task, operationKey, signal })`：在网关与隔离环境中执行一次工作；成功返回，失败抛出异常。必须响应 AbortSignal、停止子进程并释放资源。
-- `evaluator.verify({ task, signal })`：返回 `{ verdict: 'passed' | 'failed', evidence: string }`。只接受可信验证器，恢复可能重跑，须可重复且不修改业务状态。
+- `runtime.execute({ task, operationKey, signal, lease })`：在网关与隔离环境中执行一次工作；成功返回，失败抛出异常。必须响应 AbortSignal、停止子进程并释放资源。
+- `evaluator.verify({ task, signal, lease })`：返回 `{ verdict: 'passed' | 'failed', evidence: string }`。只接受可信验证器，恢复可能重跑，须可重复且不修改业务状态。
 - 写操作先持久化 pending；完成后记录 finished。pending 恢复时暂停，不自动重放；finished 恢复时进入验证，不重复执行。
 - operationKey 用于外部核对，不等同于实现了跨进程 exactly-once 或外部幂等。
 - 修复轮数持久化；deadline 首次执行后持久化，重启不重置。暂停等待也消耗该时间预算。
@@ -30,7 +30,7 @@ SQLite 审批事件已包含 actor、产物类别和哈希，但完整不可变�
 
 ## 持久化证据与报告
 
-`store.recordTool(taskId, attempt, record)` 接收严格元数据 schema；拒绝原始 output/content/环境变量及未知字段。通过 `WorkspaceTools.create({ onRecord })` 同步落库，不改变任务版本。同步持久化失败时工具调用拒绝返回成功；实际副作用仍可能已发生，必须按 pending 检查点核对。
+`store.recordTool(taskId, attempt, record, lease)` 接收严格元数据 schema；生产适配器必须传入当前租约；拒绝原始 output/content/环境变量及未知字段。通过 `WorkspaceTools.create({ onRecord, assertLease })` 在文件/命令操作前校验租约并同步落库，不改变任务版本。同步持久化失败时工具调用拒绝返回成功；实际副作用仍可能已发生，必须按 pending 检查点核对。
 
 `store.report(taskId)` 原子生成当前状态快照；`store.readReport(reportId)` 读取不可变历史版本。同一任务版本和事件序列重复查询返回同一报告；迟到证据会产生新版本。Loop 退出时自动捕获报告；晚到记录在再次查询时纳入新快照。
 

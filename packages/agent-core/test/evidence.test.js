@@ -29,12 +29,14 @@ function setup(t, maxRepairs = 0) {
 test('reports and tool evidence survive reopening; raw output and verdict text are absent', async t => {
   const f = setup(t);
   const { store, task, root } = f;
+  let activeLease;
   const tools = await WorkspaceTools.create({ root, writable: ['src/'], authorizeWrite: () => store.get(task.id).status === 'running', trustedLocal: true,
-    onRecord: record => store.recordTool(task.id, 0, record),
+    assertLease: () => { if (!activeLease) throw new Error('Task lease unavailable'); store.assertLease(task.id, activeLease); },
+    onRecord: record => store.recordTool(task.id, 0, record, activeLease),
     commands: { test: { executable: process.execPath, args: ['-e', 'console.log("fake-sensitive-output")'] } },
   });
   const result = await runTask(store, task.id, {
-    runtime: { execute: async () => tools.write('src/a.js', 'export const a = 1;') },
+    runtime: { execute: async ({ lease }) => { activeLease = lease; await tools.write('src/a.js', 'export const a = 1;'); } },
     evaluator: { verify: async () => {
       const proof = await tools.command('test');
       return { verdict: proof.exitCode === 0 ? 'passed' : 'failed', evidence: 'fake-sensitive-evidence' };

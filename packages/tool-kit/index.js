@@ -9,12 +9,14 @@ const sensitive = /(?:-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|\b(?:p
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 export class WorkspaceTools {
-  static async create({ root, writable = [], commands = {}, authorizeWrite, trustedLocal = false, onRecord = () => {} }) {
+  static async create({ root, writable = [], commands = {}, authorizeWrite, trustedLocal = false, onRecord = () => {}, assertLease = () => {} }) {
     if (!Array.isArray(writable) || writable.some(p => typeof p !== 'string' || !p || isAbsolute(p) || p.split(/[\\/]/).includes('..'))) throw new Error('Invalid writable paths');
     if (typeof authorizeWrite !== 'function') throw new Error('Write authorization required');
     if (typeof onRecord !== 'function') throw new Error('Invalid audit sink');
+    if (typeof assertLease !== 'function') throw new Error('Invalid lease guard');
     const tools = new WorkspaceTools();
     tools.onRecord = onRecord;
+    tools.assertLease = assertLease;
     tools.root = await realpath(root);
     tools.writable = [...writable];
     tools.commands = structuredClone(commands);
@@ -24,11 +26,13 @@ export class WorkspaceTools {
     return tools;
   }
   record(record) {
+    this.assertLease();
     const result = this.onRecord(structuredClone(record));
     if (result && typeof result.then === 'function') throw new Error('Audit sink must be synchronous');
     this.records.push(record);
   }
   async path(name) {
+    this.assertLease();
     if (typeof name !== 'string' || !name || name.includes('\0') || name.includes('\\') || isAbsolute(name)) throw new Error('Invalid workspace path');
     const path = resolve(this.root, name);
     const local = relative(this.root, path);
@@ -61,6 +65,7 @@ export class WorkspaceTools {
     const { path, local } = await this.path(name);
     if (!this.writable.some(p => local === p || (p.endsWith('/') && local.startsWith(p)))) throw new Error('Write outside allowlist');
     if (!(await this.authorizeWrite())) throw new Error('Approved running task required');
+    this.assertLease();
     await mkdir(dirname(path), { recursive: true });
     await this.path(name);
     const file = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
@@ -79,6 +84,7 @@ export class WorkspaceTools {
     if (!spec || typeof spec.executable !== 'string' || !isAbsolute(spec.executable) || !Array.isArray(spec.args) || spec.args.some(a => typeof a !== 'string')) throw new Error('Command not allowlisted');
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || !Number.isSafeInteger(maxOutputBytes) || maxOutputBytes <= 0) throw new Error('Invalid command limits');
     signal?.throwIfAborted();
+    this.assertLease();
     const started = Date.now();
     return new Promise((resolveResult, reject) => {
       let timer, stopped, spawnFailed = false, size = 0;

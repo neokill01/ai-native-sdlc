@@ -8,9 +8,12 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
   if (!['queued', 'running', 'verifying', 'repairing'].includes(task.status)) { store.releaseLease(id, lease); throw new Error('Task is not runnable'); }
   // A pending side effect after a crash is uncertain. Never replay it automatically.
   if (task.checkpoint?.operation === 'pending') {
-    if (task.status !== 'running') throw new Error('Invalid pending checkpoint');
-    try { const paused = store.transition(id, task.version, 'paused', 'uncertain_operation', lease); store.report(id); return paused; }
-    finally { try { store.releaseLease(id, lease); } catch { /* lease may have expired */ } }
+    try {
+      if (task.status !== 'running') throw new Error('Invalid pending checkpoint');
+      const paused = store.transition(id, task.version, 'paused', 'uncertain_operation', lease);
+      store.report(id);
+      return paused;
+    } finally { try { store.releaseLease(id, lease); } catch { /* lease may have expired */ } }
   }
   const controller = new AbortController();
   const deadline = task.checkpoint?.deadline ?? Date.now() + timeoutMs;
@@ -50,7 +53,7 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
         task = store.checkpoint(id, task.version, { deadline, operation: 'pending', operationKey }, activeLease);
         await invoke(abortSignal => runtime.execute({ task: structuredClone(task), operationKey, signal: abortSignal, lease: activeLease }));
         task = store.checkpoint(id, task.version, { operation: 'finished' }, activeLease);
-        task = store.transition(id, task.version, 'verifying');
+        task = store.transition(id, task.version, 'verifying', null, activeLease);
       }
       if (task.status === 'verifying') {
         // Verification adapters must be read-only/repeatable. Persist deadline on recovery too.
