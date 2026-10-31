@@ -24,6 +24,6 @@
 
 ## Docker OS sandbox
 
-DockerSandbox runs allowlisted argument arrays in a pre-pulled image with network disabled, a read-only container root, all Linux capabilities dropped, no-new-privileges, bounded memory/CPU/PIDs, a noexec tmpfs, and only the task worktree mounted read-write. It passes only a minimal environment and requires a live task lease guard before and after execution. Raw command output is returned in memory to the trusted adapter, while the audit callback receives only bounded metadata and hashes.
+DockerSandbox runs allowlisted argument arrays in a pre-pulled image with network disabled, a read-only container root, all Linux capabilities dropped, Docker default seccomp profile, no-new-privileges, bounded memory/CPU/PIDs, a noexec tmpfs, and only the task worktree mounted read-write. It passes only a minimal environment and requires a live task lease guard before and after execution. Raw command output is returned in memory to the trusted adapter, while the audit callback receives only bounded metadata and hashes.
 
 The Docker daemon and image are part of the trusted computing base. The host must protect access to the Docker socket; never mount the Docker socket, host home, credentials, or arbitrary host paths into the container. This is Linux container isolation, not a VM boundary; use a hardened daemon/VM for hostile multi-tenant workloads.

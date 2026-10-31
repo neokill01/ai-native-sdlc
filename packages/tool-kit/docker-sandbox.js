@@ -71,7 +71,7 @@ export class DockerSandbox {
     const name=`devos-${randomUUID().replaceAll('-','').slice(0,24)}`;
     const policy=[
       '--rm','--name',name,'--network','none','--read-only','--cap-drop','ALL',
-      '--security-opt','no-new-privileges:true','--security-opt','seccomp=default','--pids-limit',String(this.pidsLimit),
+      '--security-opt','no-new-privileges:true','--pids-limit',String(this.pidsLimit),
       '--memory',this.memory,'--memory-swap',this.memory,'--cpus',String(this.cpus),
       '--ulimit','nofile=1024:1024','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=64m',
       '--user',`${uid}:${gid}`,'--workdir','/workspace','--init',
