@@ -126,7 +126,7 @@ export async function main(argv=process.argv.slice(2)) {
     const evaluator=new ApprovedPlanEvaluator({store,sandbox});
     const task=await runTask(store,id,{runtime,evaluator,worktreeManager,repository,baseRef:options.baseRef??'HEAD',timeoutMs,leaseTtlMs:Math.min(3_600_000,timeoutMs+60_000),workerId:options.workerId??`cli-${process.pid}`});
     const report=store.report(id);
-    json({taskId:id,status:task.status,stopReason:task.stopReason??null,verification:task.verification,reportId:report.id,reportStatus:report.status,checks:report.checks,acceptance:report.acceptance});
+    json({taskId:id,status:task.status,stopReason:task.stopReason??null,verification:task.verification,summary:task.deliverySummary??null,reportId:report.id,reportStatus:report.status,checks:report.checks,acceptance:report.acceptance});
     return task.status==='completed'?0:1;
   });
   throw new Error(`Unknown command: ${command}`);

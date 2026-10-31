@@ -16,6 +16,7 @@ const next = {
   repairing: ['running', 'failed', 'paused', 'cancelled'], paused: ['queued', 'cancelled'],
 };
 const artifactKind = { intent_review: 'intent', spec_review: 'spec', plan_review: 'plan' };
+const secretSummary = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\\s*[:=]\\s*[\"'][^\"'\\r\\n]{8,}[\"']/i;
 
 export class TaskStore {
   constructor(filename) {
@@ -156,6 +157,16 @@ export class TaskStore {
       if (!['running', 'verifying', 'repairing'].includes(task.status)) throw new Error('Not active');
       task.checkpoint = { ...task.checkpoint, ...detail };
       return { checkpoint: task.checkpoint };
+    }, lease);
+  }
+  deliverySummary(id, version, summary, lease = null) {
+    if (typeof summary !== 'string' || !summary.trim() || summary.length > 12_000 || secretSummary.test(summary)) throw new Error('Invalid or sensitive delivery summary');
+    const summaryHash = createHash('sha256').update(summary).digest('hex');
+    return this.mutate(id, version, 'delivery.summary_recorded', task => {
+      if (task.status !== 'running') throw new Error('Delivery summary can only be recorded while running');
+      task.deliverySummary = summary;
+      task.deliverySummaryHash = summaryHash;
+      return { summaryHash, length: summary.length };
     }, lease);
   }
   resolvePending(id, version, { actor, decision, evidence } = {}) {

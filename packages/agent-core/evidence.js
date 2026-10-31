@@ -62,7 +62,7 @@ export function captureReport(store, id) {
       status: task.status, stopReason: task.stopReason ?? null, attempt: task.repairs, createdAt: new Date().toISOString(),
       verification: task.verification, verificationEvidenceHash: task.evidenceHash ?? null,
       checks: commands.length ? commands : [{ check: 'commands', verdict: 'not_run' }],
-      acceptance: 'needs_human_review', tools,
+      acceptance: 'needs_human_review', deliverySummary: task.deliverySummary ?? null, deliverySummaryHash: task.deliverySummaryHash ?? null, tools,
       approvals: events.filter(e => e.type === 'approval.recorded').map(e => ({ sequence: e.sequence, ...e.payload })),
     };
     const reportId = digest(JSON.stringify(report));

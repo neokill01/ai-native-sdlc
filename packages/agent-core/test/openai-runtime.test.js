@@ -50,13 +50,15 @@ test('Responses runtime executes model tool calls in sequence and evaluates the 
  const running=f.store.transition(task.id,task.version,'running',null,lease);
  const runtimeResult=await runtime.execute({task:running,workspace:f.root,lease});
  assert.match(runtimeResult.summary,/Implemented/);
- const verifying=f.store.transition(task.id,f.store.get(task.id).version,'verifying',null,lease);
+ const withSummary=f.store.deliverySummary(task.id,f.store.get(task.id).version,runtimeResult.summary,lease);
+ const verifying=f.store.transition(task.id,withSummary.version,'verifying',null,lease);
  const verified=await evaluator.verify({task:f.store.get(task.id),workspace:f.root,lease});
  assert.equal(verified.verdict,'passed',verified.evidence);
  const recorded=f.store.verification(task.id,verifying.version,verified.verdict,verified.evidence,lease);
  const completed=f.store.transition(task.id,recorded.version,'completed',null,lease);
  f.store.releaseLease(task.id,lease);
  assert.equal(completed.status,'completed');
+ assert.equal(f.store.report(task.id).deliverySummary,runtimeResult.summary);
  assert.equal(await readFile(join(f.root,'src/value.js'),'utf8'),'export const value = 42;\n');
  assert.equal(sandboxCalls,2);
  assert.equal(requests.length,3);

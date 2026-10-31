@@ -143,7 +143,7 @@ export class OpenAIResponsesRuntime {
       if (calls.length === 0) {
         const summary = responseText(response);
         if (!summary) throw new Error('Model returned no final response');
-        this.store.event(taskId, 'model.completed', { model: this.model, turns: turn, toolCalls, ...usage });
+        this.store.event(taskId, 'model.completed', { model: this.model, turns: turn, toolCalls, summaryHash: hash(summary), ...usage });
         return { summary, usage, turns: turn, toolCalls };
       }
       if (toolCalls + calls.length > this.maxToolCalls) throw new Error('Model tool-call budget exceeded');

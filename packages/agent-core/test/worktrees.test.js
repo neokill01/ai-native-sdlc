@@ -86,10 +86,12 @@ test('runTask supplies the leased worktree path to runtime and evaluator',async 
  let runtimePath=null,evaluatorPath=null;
  const result=await runTask(f.store,task.id,{
   worktreeManager:f.manager,repository:f.repository,
-  runtime:{execute:async({workspace,lease})=>{runtimePath=workspace;assert.ok(workspace);f.store.assertLease(task.id,lease);}},
+  runtime:{execute:async({workspace,lease})=>{runtimePath=workspace;assert.ok(workspace);f.store.assertLease(task.id,lease);return {summary:'Implemented the isolated task and prepared the verification report.'};}},
   evaluator:{verify:async({workspace,lease})=>{evaluatorPath=workspace;f.store.assertLease(task.id,lease);return {verdict:'passed',evidence:'isolated workspace verified'};}}
  });
  assert.equal(result.status,'completed');
+ assert.match(result.deliverySummary,/verification report/);
+ assert.equal(f.store.report(task.id).deliverySummary,result.deliverySummary);
  assert.equal(runtimePath,evaluatorPath);
  assert.ok(runtimePath.startsWith(resolve(f.worktreeRoot)));
 });

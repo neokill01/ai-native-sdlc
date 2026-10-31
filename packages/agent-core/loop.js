@@ -57,7 +57,8 @@ export async function runTask(store, id, { runtime, evaluator, timeoutMs = 60_00
         // Persist intent before handing control to an adapter; key is stable for reconciliation.
         const operationKey = task.checkpoint?.lastUncertainOperationKey ?? task.checkpoint?.operationKey ?? `${id}:${task.repairs}`;
         task = store.checkpoint(id, task.version, { deadline, operation: 'pending', operationKey }, activeLease);
-        await invoke(abortSignal => runtime.execute({ task: structuredClone(task), operationKey, signal: abortSignal, lease: activeLease, workspace: worktree?.path ?? null, worktree }));
+        const execution = await invoke(abortSignal => runtime.execute({ task: structuredClone(task), operationKey, signal: abortSignal, lease: activeLease, workspace: worktree?.path ?? null, worktree }));
+        if (typeof execution?.summary === 'string' && execution.summary.trim()) task = store.deliverySummary(id, task.version, execution.summary, activeLease);
         task = store.checkpoint(id, task.version, { operation: 'finished' }, activeLease);
         task = store.transition(id, task.version, 'verifying', null, activeLease);
       }
