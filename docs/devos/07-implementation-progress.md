@@ -78,3 +78,12 @@ TaskStore 是可信内部领域模块，actor 和验证证据由调用者提供�
 - GitHub Actions agent-core job 在提交 8e19ae6 上实际通过：40 项 Node 测试，0 失败；npm run check 和 npm run test:guards 均通过。该 workflow 的自托管 evals job 仍排队，不能把整个 workflow 标记为通过。
 
 边界：SQLite 租约只适用于共享同一数据库文件的单主机/单实例，不是多主机分布式锁；Git Worktree 是版本控制工作区隔离，不是 OS 沙箱。bwrap 隔离仍被当前环境权限阻止，真实模型 Harness 尚未接入。Issue #6 的功能实现已完成，待本轮完整 CI 收尾核验后关闭。
+## 2026-10-31：评测 CI 可移植性与完整回归
+
+- 将自包含 eval suite 从长期自托管 Runner 迁移到 GitHub 托管的临时 ubuntu-latest runner，workflow 使用 contents: read，增加 10 分钟 job 上限。
+- eval verify 命令默认 120 秒超时，可配置 1–600 秒；超时会杀掉整个进程组并记为 FAIL，避免留下后台子进程。
+- 迁移到 Python 3.14 后，premarket CLI 帮助文本中未转义的百分号导致 argparse 抛出 ValueError；修正为“百分比”，并把 CLI --help 纳入 eval 回归。
+- 最新完整 workflow run 41150315076：success。agent-core 40/40 Node 测试通过；Python 门禁 6/6 通过；evals PASS=2 FAIL=0 REVIEW=1 SKIP=0，RESULT=REVIEW。API 安全清单仍需人工审查，不能当作 PASS。
+- Issue #5（工具审计与交付报告）和 #6（Worktree、独占租约与恢复核对）已完成并关闭；PR #1 继续保持 Draft。
+
+当前未完成：OS Sandbox、真实模型/Coding Harness、真实任务评测、费用/Token 预算、强制进程终止、身份鉴权/API/CLI/控制台。P1 尚未结项。
