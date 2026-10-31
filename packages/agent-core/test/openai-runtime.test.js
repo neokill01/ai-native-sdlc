@@ -46,7 +46,16 @@ test('Responses runtime executes model tool calls in sequence and evaluates the 
  const fetchImpl=async(url,options)=>{requests.push({url,options,body:JSON.parse(options.body)});return responses.shift();};
  const runtime=new OpenAIResponsesRuntime({store:f.store,sandbox,apiKey:'test-api-secret',model:'gpt-6-astra',fetchImpl});
  const evaluator=new ApprovedPlanEvaluator({store:f.store,sandbox});
- const completed=await runTask(f.store,task.id,{runtime,evaluator});
+ const lease=f.store.acquireLease(task.id,'runtime-test',60_000);
+ const running=f.store.transition(task.id,task.version,'running',null,lease);
+ const runtimeResult=await runtime.execute({task:running,workspace:f.root,lease});
+ assert.match(runtimeResult.summary,/Implemented/);
+ const verifying=f.store.transition(task.id,f.store.get(task.id).version,'verifying',null,lease);
+ const verified=await evaluator.verify({task:f.store.get(task.id),workspace:f.root,lease});
+ assert.equal(verified.verdict,'passed',verified.evidence);
+ const recorded=f.store.verification(task.id,verifying.version,verified.verdict,verified.evidence,lease);
+ const completed=f.store.transition(task.id,recorded.version,'completed',null,lease);
+ f.store.releaseLease(task.id,lease);
  assert.equal(completed.status,'completed');
  assert.equal(await readFile(join(f.root,'src/value.js'),'utf8'),'export const value = 42;\n');
  assert.equal(sandboxCalls,2);
@@ -85,6 +94,5 @@ test('approved evaluator rejects missing or stale plan approval',async t=>{
  const result=await evaluator.verify({task:invalid,workspace:f.root,lease});
  assert.equal(result.verdict,'failed');
  assert.match(result.evidence,/Approved plan hash/);
- f.store.releaseTaskLease?.(task.id,lease);
  f.store.releaseLease(task.id,lease);
 });
