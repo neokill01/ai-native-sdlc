@@ -16,7 +16,7 @@ const next = {
   repairing: ['running', 'failed', 'paused', 'cancelled'], paused: ['queued', 'cancelled'],
 };
 const artifactKind = { intent_review: 'intent', spec_review: 'spec', plan_review: 'plan' };
-const secretSummary = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\\s*[:=]\\s*[\"'][^\"'\\r\\n]{8,}[\"']/i;
+const secretSummary = /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|(?:api[_-]?key|access[_-]?token|client[_-]?secret|password)\s*[:=]\s*[\"'][^\"'\r\n]{8,}[\"']/i;
 
 export class TaskStore {
   constructor(filename) {
