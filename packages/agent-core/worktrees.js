@@ -2,7 +2,22 @@ import { spawn } from 'node:child_process';
 import { mkdir, realpath, lstat } from 'node:fs/promises';
 import { resolve, relative, sep, isAbsolute } from 'node:path';
 
-const states = new Set(['creating','ready','removing','removed','failed','orphaned','missing']);
+export function initializeWorktrees(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS task_worktrees(
+    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    fencing_token INTEGER NOT NULL,
+    path TEXT NOT NULL UNIQUE,
+    branch TEXT NOT NULL UNIQUE,
+    base_ref TEXT NOT NULL,
+    repository TEXT NOT NULL,
+    state TEXT NOT NULL,
+    head_sha TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(task_id,fencing_token)
+  );`);
+}
+
 const within = (base,target) => {
   const rel=relative(base,target);
   return rel==='' || (rel!=='..'&&!rel.startsWith(`..${sep}`)&&!isAbsolute(rel));
@@ -110,7 +125,7 @@ export class GitWorktreeManager {
     const found=list.find(x=>resolve(x.path)===resolve(item.path));
     let state=item.state,head=item.head_sha??null;
     if(found){
-      if(found.branch!==item.branch){state='orphaned';}
+      if(found.branch!==item.branch || state==='failed'){state='orphaned';}
       else if(state==='creating'||state==='removing'||state==='missing')state='ready';
       head=found.head??head;
     }else{
@@ -124,6 +139,10 @@ export class GitWorktreeManager {
     this.store.assertLease(taskId,lease);
     let item=this.store.getWorktree(taskId,lease,fencingToken);
     if(item.state==='removed')return item;
+    if(item.state==='creating') item=await this.reconcile({taskId,lease,fencingToken,signal});
+    if(item.state==='removed')return item;
+    if(item.state==='missing'||item.state==='failed')return item;
+    if(item.state==='orphaned')throw new Error('Orphaned worktree requires manual inspection');
     if(item.state!=='removing')item=this.store.updateWorktree(taskId,lease,fencingToken,'removing');
     try{
       await runGit(item.repository,['worktree','remove',...(force?['--force']:[]),item.path],{timeoutMs:this.timeoutMs,signal});

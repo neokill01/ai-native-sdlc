@@ -3,6 +3,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomUUID } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import { initializeEvidence, recordTool, captureReport } from './evidence.js';
 import { initializeLeases, acquireTaskLease, renewTaskLease, releaseTaskLease, assertTaskLease, currentTaskLease } from './leases.js';
 import { initializeWorktrees } from './worktrees.js';
@@ -34,7 +35,7 @@ export class TaskStore {
   assertLease(id, lease, now) { return assertTaskLease(this, id, lease, now); }
   currentLease(id, now) { return currentTaskLease(this, id, now); }
   reserveWorktree(id, lease, record) {
-    if (!record || typeof record.path !== 'string' || typeof record.branch !== 'string' || typeof record.baseRef !== 'string' || typeof record.repository !== 'string') throw new Error('Invalid worktree record');
+    if (!record || typeof record.path !== 'string' || !isAbsolute(record.path) || typeof record.repository !== 'string' || !isAbsolute(record.repository) || typeof record.branch !== 'string' || !/^devos\\/tasks\\/[a-zA-Z0-9-]{1,64}\\/fence-[1-9][0-9]*$/.test(record.branch) || typeof record.baseRef !== 'string' || !record.baseRef || record.baseRef.length > 256) throw new Error('Invalid worktree record');
     this.assertLease(id, lease);
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -67,6 +68,7 @@ export class TaskStore {
       if (fencingToken > lease.fencingToken) throw new Error('Stale worktree fencing token');
       const current = this.db.prepare('SELECT state FROM task_worktrees WHERE task_id=? AND fencing_token=?').get(id, fencingToken);
       if (!current || (current.state !== state && !allowed[current.state]?.includes(state))) throw new Error('Invalid worktree state transition');
+      if (headSha !== null && !/^[a-f0-9]{40,64}$/.test(headSha)) throw new Error('Invalid worktree HEAD');
       const now = new Date().toISOString();
       this.db.prepare('UPDATE task_worktrees SET state=?,head_sha=COALESCE(?,head_sha),updated_at=? WHERE task_id=? AND fencing_token=?').run(state, headSha, now, id, fencingToken);
       this.event(id, 'worktree.state_changed', { fencingToken, from: current.state, to: state, headSha });
