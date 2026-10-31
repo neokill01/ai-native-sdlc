@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { mkdir, realpath, lstat } from 'node:fs/promises';
+import { mkdir, realpath, lstat, stat } from 'node:fs/promises';
 import { resolve, relative, sep, isAbsolute } from 'node:path';
 
 export function initializeWorktrees(db) {
@@ -83,8 +83,11 @@ export class GitWorktreeManager {
     return actual;
   }
   async prepareRoot(repository) {
-    await mkdir(this.root,{recursive:true});
+    await mkdir(this.root,{recursive:true,mode:0o700});
     const root=await realpath(this.root);
+    const info=await stat(root);
+    if(!info.isDirectory()||(process.platform!=='win32'&&(info.mode&0o077)!==0))throw new Error('Worktree root must be a private directory (0700)');
+    if(typeof process.getuid==='function'&&info.uid!==process.getuid())throw new Error('Worktree root must be owned by the current user');
     if(within(repository,root)||within(root,repository))throw new Error('Worktree root and repository must be separate');
     return root;
   }
@@ -131,7 +134,7 @@ export class GitWorktreeManager {
       head=found.head??head;
     }else{
       try{await lstat(item.path);state='orphaned';}
-      catch(e){if(e.code!=='ENOENT')throw e;state=state==='removing'?'removed':state==='removed'?'removed':'missing';}
+      catch(e){if(e.code!=='ENOENT')throw e;state=['removing','removed'].includes(state)?'removed':state==='creating'?'missing':state;}
     }
     if(state!==item.state||head!==item.head_sha)return this.store.updateWorktree(taskId,lease,fencingToken,state,head);
     return item;

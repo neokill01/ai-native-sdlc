@@ -65,7 +65,7 @@ test('reconciles a worktree whose creation completed before its ready event',asy
  const f=await fixture(t);
  const path=join(f.worktreeRoot,`${f.task.id}-${f.lease.fencingToken}`);
  const branch=`devos/tasks/${f.task.id}/fence-${f.lease.fencingToken}`;
- await mkdir(f.worktreeRoot,{recursive:true});
+ await mkdir(f.worktreeRoot,{recursive:true,mode:0o700});
  f.store.reserveWorktree(f.task.id,f.lease,{path,branch,baseRef:'HEAD',repository:f.repository});
  execFileSync('git',['-C',f.repository,'worktree','add','-b',branch,path,'HEAD'],{stdio:'ignore'});
  const item=await f.manager.reconcile({taskId:f.task.id,lease:f.lease});
