@@ -57,7 +57,19 @@ export function captureReport(store, id) {
     const latest = new Map(current.map(e => [e.record.command, e]));
     const commands = [...latest.values()].map(e => ({ check: e.record.command,
       verdict: e.record.reason || e.record.signal || e.record.exitCode !== 0 ? 'failed' : 'passed', evidenceSequence: e.sequence }));
+    const modelCalls = events.filter(e => e.type === 'model.usage').map(e => e.payload);
+    const knownRequests = new Set(modelCalls.map(e => e.requestId));
+    const uncertainRequests = events.filter(e => e.type === 'model.request_started' && !knownRequests.has(e.payload.requestId)).length;
+    const modelUsage = {
+      inputTokens: modelCalls.reduce((n, u) => n + u.inputTokens, 0),
+      outputTokens: modelCalls.reduce((n, u) => n + u.outputTokens, 0),
+      totalTokens: modelCalls.reduce((n, u) => n + u.totalTokens, 0),
+      estimatedCostUsd: modelCalls.length && modelCalls.every(u => Number.isFinite(u.estimatedCostUsd)) ? modelCalls.reduce((n, u) => n + u.estimatedCostUsd, 0) : null,
+      requestsWithUsage: modelCalls.length, uncertainRequests,
+      policy: events.find(e => e.type === 'model.budget_configured')?.payload.policy ?? null,
+    };
     const report = {
+      modelUsage,
       schemaVersion: 1, taskId: id, taskVersion: task.version, eventSequence: sequence,
       status: task.status, stopReason: task.stopReason ?? null, attempt: task.repairs, createdAt: new Date().toISOString(),
       verification: task.verification, verificationEvidenceHash: task.evidenceHash ?? null,

@@ -98,3 +98,44 @@ test('approved evaluator rejects missing or stale plan approval',async t=>{
  assert.match(result.evidence,/Approved plan hash/);
  f.store.releaseLease(task.id,lease);
 });
+
+test('task token budget survives repair attempts and a new runtime instance', async t => {
+ const f=await fixture(t),task=queue(f.store);
+ const lease=f.store.acquireLease(task.id,'persistent-budget',60_000);
+ let running=f.store.transition(task.id,task.version,'running',null,lease);
+ let calls=0;
+ const options={store:f.store,sandbox:{run:async()=>assert.fail('must not run a command')},apiKey:'test',model:'fixture-model',maxTotalTokens:150,
+  fetchImpl:async()=>{calls++;return response([{type:'message',content:[{type:'output_text',text:'fixture implementation'}]}]);}};
+ await new OpenAIResponsesRuntime(options).execute({task:running,workspace:f.root,lease});
+ let verifying=f.store.transition(task.id,running.version,'verifying',null,lease);
+ verifying=f.store.verification(task.id,verifying.version,'failed','fixture needs repair',lease);
+ const repairing=f.store.transition(task.id,verifying.version,'repairing',null,lease);
+ running=f.store.transition(task.id,repairing.version,'running',null,lease);
+ await assert.rejects(()=>new OpenAIResponsesRuntime(options).execute({task:running,workspace:f.root,lease}),/budget exceeded/);
+ assert.equal(calls,1);
+ assert.equal(f.store.events(task.id).filter(e=>e.type==='model.usage').length,1);
+});
+
+test('unknown request usage blocks retries instead of assuming zero cost', async t => {
+ const f=await fixture(t),task=queue(f.store);
+ const lease=f.store.acquireLease(task.id,'uncertain-request',60_000);
+ const running=f.store.transition(task.id,task.version,'running',null,lease);
+ let calls=0;
+ const options={store:f.store,sandbox:{run:async()=>{}},apiKey:'test',model:'fixture-model',fetchImpl:async()=>{calls++;throw new Error('connection interrupted');}};
+ await assert.rejects(()=>new OpenAIResponsesRuntime(options).execute({task:running,workspace:f.root,lease}),/connection interrupted/);
+ await assert.rejects(()=>new OpenAIResponsesRuntime(options).execute({task:running,workspace:f.root,lease}),/Uncertain model request/);
+ assert.equal(calls,1);
+ assert.equal(f.store.report(task.id).modelUsage.uncertainRequests,1);
+});
+
+test('malformed or missing usage cannot authorize model-proposed writes', async t => {
+ for(const usage of [null,{}, {input_tokens:-1,output_tokens:1,total_tokens:0},{input_tokens:5,output_tokens:5,total_tokens:0}]){
+  const f=await fixture(t),task=queue(f.store);
+  const lease=f.store.acquireLease(task.id,'invalid-usage',60_000);
+  const running=f.store.transition(task.id,task.version,'running',null,lease);
+  const runtime=new OpenAIResponsesRuntime({store:f.store,sandbox:{run:async()=>{}},apiKey:'test',model:'fixture-model',
+   fetchImpl:async()=>response([{type:'function_call',call_id:'call_bad_usage',name:'write_file',arguments:JSON.stringify({path:'src/invalid.js',content:'unexpected write'})}],usage)});
+  await assert.rejects(()=>runtime.execute({task:running,workspace:f.root,lease}),/invalid model usage/);
+  await assert.rejects(()=>readFile(join(f.root,'src/invalid.js'),'utf8'));
+ }
+});

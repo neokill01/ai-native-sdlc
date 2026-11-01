@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { taskBudget, readUsage } from './model-budget.js';
 import { WorkspaceTools } from '../tool-kit/index.js';
 
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -31,17 +32,6 @@ function responseText(response) {
     .filter(item => item.type === 'output_text' || item.type === 'refusal')
     .map(item => item.text ?? '').join('\n').trim();
 }
-function readUsage(response) {
-  const usage = response.usage ?? {};
-  const inputTokens = Number.isSafeInteger(usage.input_tokens) ? usage.input_tokens : 0;
-  const outputTokens = Number.isSafeInteger(usage.output_tokens) ? usage.output_tokens : 0;
-  return { inputTokens, outputTokens, totalTokens: Number.isSafeInteger(usage.total_tokens) ? usage.total_tokens : inputTokens + outputTokens };
-}
-function estimateCost(usage, pricing) {
-  if (!pricing) return null;
-  return (usage.inputTokens * pricing.inputUsdPerMillion + usage.outputTokens * pricing.outputUsdPerMillion) / 1_000_000;
-}
-
 export class OpenAIResponsesRuntime {
   constructor({ store, sandbox, apiKey = process.env.OPENAI_API_KEY, model = process.env.DEVOS_OPENAI_MODEL,
     baseUrl = 'https://api.openai.com/v1/responses', fetchImpl = globalThis.fetch,
@@ -61,6 +51,9 @@ export class OpenAIResponsesRuntime {
     if (maxCostUsd !== null && (typeof maxCostUsd !== 'number' || !Number.isFinite(maxCostUsd) || maxCostUsd <= 0 ||
         !pricing || !Number.isFinite(pricing.inputUsdPerMillion) || pricing.inputUsdPerMillion < 0 ||
         !Number.isFinite(pricing.outputUsdPerMillion) || pricing.outputUsdPerMillion < 0)) throw new Error('Cost limit requires explicit model pricing');
+    if (pricing !== null && (!isObject(pricing) ||
+        !Number.isFinite(pricing.inputUsdPerMillion) || pricing.inputUsdPerMillion < 0 ||
+        !Number.isFinite(pricing.outputUsdPerMillion) || pricing.outputUsdPerMillion < 0)) throw new Error('Invalid model pricing');
     this.store = store; this.sandbox = sandbox; this.apiKey = apiKey; this.model = model;
     this.endpoint = endpoint.toString(); this.fetchImpl = fetchImpl;
     this.maxTurns = maxTurns; this.maxToolCalls = maxToolCalls; this.maxOutputTokens = maxOutputTokens;
@@ -113,13 +106,16 @@ export class OpenAIResponsesRuntime {
       approvedArtifacts: Object.fromEntries(Object.entries(task.artifacts ?? {}).map(([kind, artifact]) => [kind, artifact.content])),
     };
     const input = [{ role: 'user', content: `Complete this approved engineering task.\n\n${JSON.stringify(context)}\n\nWorkspace root: /workspace` }];
-    const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, estimatedCostUsd: 0 };
-    let toolCalls = 0;
+    const budget = taskBudget(this.store, taskId, lease, {
+      model: this.model, maxTotalTokens: this.maxTotalTokens, maxCostUsd: this.maxCostUsd,
+      pricing: this.pricing, maxTurns: this.maxTurns, maxToolCalls: this.maxToolCalls,
+    });
+    const usage = budget.usage;
     for (let turn = 1; turn <= this.maxTurns; turn++) {
       signal?.throwIfAborted();
       this.store.assertLease(taskId, lease);
       const remaining = this.maxTotalTokens - usage.totalTokens;
-      if (remaining < 16) throw new Error('Model token budget exhausted');
+      const requestId = budget.beforeRequest();
       const response = await this.request({
         model: this.model,
         instructions,
@@ -130,23 +126,16 @@ export class OpenAIResponsesRuntime {
         store: false,
         max_output_tokens: Math.min(this.maxOutputTokens, remaining),
       }, signal);
-      const turnUsage = readUsage(response);
-      usage.inputTokens += turnUsage.inputTokens;
-      usage.outputTokens += turnUsage.outputTokens;
-      usage.totalTokens += turnUsage.totalTokens;
-      const estimated = estimateCost(turnUsage, this.pricing);
-      if (estimated !== null) usage.estimatedCostUsd += estimated;
-      this.store.event(taskId, 'model.usage', { model: this.model, turn, ...turnUsage, estimatedCostUsd: estimated });
-      if (usage.totalTokens > this.maxTotalTokens || (this.maxCostUsd !== null && usage.estimatedCostUsd > this.maxCostUsd)) throw new Error('Model budget exceeded');
+      budget.charge(requestId, readUsage(response));
       if (response.status && response.status !== 'completed') throw new Error(`Model response did not complete: ${response.status}`);
       const calls = response.output.filter(item => item.type === 'function_call');
       if (calls.length === 0) {
         const summary = responseText(response);
         if (!summary) throw new Error('Model returned no final response');
-        this.store.event(taskId, 'model.completed', { model: this.model, turns: turn, toolCalls, summaryHash: hash(summary), ...usage });
-        return { summary, usage, turns: turn, toolCalls };
+        this.store.event(taskId, 'model.completed', { model: this.model, turns: turn, toolCalls: budget.toolCalls, summaryHash: hash(summary), ...usage });
+        return { summary, usage, turns: turn, toolCalls: budget.toolCalls };
       }
-      if (toolCalls + calls.length > this.maxToolCalls) throw new Error('Model tool-call budget exceeded');
+      budget.allowTools(calls.length);
       // Replay every output item, including reasoning items, before returning function outputs.
       input.push(...response.output);
       for (const call of calls) {
@@ -185,7 +174,7 @@ export class OpenAIResponsesRuntime {
         }
         this.store.event(taskId, 'model.tool_call', { name: call.name, callIdHash: hash(call.call_id), argumentsHash: hash(JSON.stringify(args)) });
         input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) });
-        toolCalls++;
+        budget.toolRecorded();
       }
     }
     throw new Error('Model turn budget exhausted');
