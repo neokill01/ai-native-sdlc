@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { userInfo } from 'node:os';
 import { TaskStore, runTask, OpenAIResponsesRuntime, ApprovedPlanEvaluator } from './index.js';
 import { GitWorktreeManager } from './worktrees.js';
+import { providerConfig } from './providers.js';
 import { DockerSandbox } from '../tool-kit/docker-sandbox.js';
 
 export function parseArgs(argv) {
@@ -45,9 +46,9 @@ Commands:
   status --db PATH --task ID
   report --db PATH --task ID
   resolve --db PATH --task ID --decision completed|not_executed (--evidence TEXT | --evidence-file PATH)
-  run --db PATH --task ID --repository PATH --worktree-root PATH [--model MODEL] [--max-total-tokens N] [--max-cost-usd USD]
+  run --db PATH --task ID --repository PATH --worktree-root PATH [--provider openai|deepseek] [--model MODEL] [--max-total-tokens N] [--max-cost-usd USD]
 
-Run requires OPENAI_API_KEY and DEVOS_OPENAI_MODEL (or --model). API credentials are read only by the host process and are never passed into the sandbox.
+Run requires the selected provider API key and model: OPENAI_API_KEY/DEVOS_OPENAI_MODEL or DEEPSEEK_API_KEY/DEVOS_DEEPSEEK_MODEL (or --model). API credentials are read only by the host process and are never passed into the sandbox.
 `);
 }
 const allowedOptions = {
@@ -57,7 +58,7 @@ const allowedOptions = {
   status: ['db','task'],
   report: ['db','task'],
   resolve: ['db','task','decision','evidence','evidenceFile'],
-  run: ['db','task','repository','worktreeRoot','model','baseRef','workerId','timeoutMs','maxTotalTokens','maxCostUsd','inputUsdPerMillion','outputUsdPerMillion','image','memory','cpus','pidsLimit','commandTimeoutMs','maxOutputBytes','maxTurns','maxToolCalls','maxOutputTokens','requestTimeoutMs'],
+  run: ['db','task','repository','worktreeRoot','provider','model','baseRef','workerId','timeoutMs','maxTotalTokens','maxCostUsd','inputUsdPerMillion','outputUsdPerMillion','image','memory','cpus','pidsLimit','commandTimeoutMs','maxOutputBytes','maxTurns','maxToolCalls','maxOutputTokens','requestTimeoutMs'],
 };
 export async function main(argv=process.argv.slice(2)) {
   const {command,options,positional}=parseArgs(argv);
@@ -111,8 +112,7 @@ export async function main(argv=process.argv.slice(2)) {
     const id=required(options,'task');
     const repository=resolve(required(options,'repository'));
     const worktreeRoot=resolve(required(options,'worktreeRoot'));
-    const model=options.model??process.env.DEVOS_OPENAI_MODEL;
-    if(typeof model!=='string'||!model.trim())throw new Error('DEVOS_OPENAI_MODEL or --model is required');
+    const modelConfig=providerConfig(options.provider??process.env.DEVOS_PROVIDER??'openai',{model:options.model});
     const timeoutMs=number(options,'timeoutMs',900_000,1_000,3_570_000);
     const maxTotalTokens=number(options,'maxTotalTokens',100_000,16,10_000_000);
     const maxCostUsd=options.maxCostUsd===undefined?null:number(options,'maxCostUsd',null,0.001,1000);
@@ -122,7 +122,7 @@ export async function main(argv=process.argv.slice(2)) {
     if(maxCostUsd!==null&&(inputRate===null||outputRate===null))throw new Error('A cost cap requires --input-usd-per-million and --output-usd-per-million');
     const sandbox=new DockerSandbox({image:options.image??'node:24-bookworm-slim',memory:options.memory??'512m',cpus:number(options,'cpus',1,0.1,16),pidsLimit:number(options,'pidsLimit',128,16,4096),timeoutMs:number(options,'commandTimeoutMs',60_000,1_000,900_000),maxOutputBytes:number(options,'maxOutputBytes',65_536,1,1_048_576)});
     const worktreeManager=new GitWorktreeManager({store,root:worktreeRoot});
-    const runtime=new OpenAIResponsesRuntime({store,sandbox,model,maxTurns:number(options,'maxTurns',20,1,100),maxToolCalls:number(options,'maxToolCalls',40,1,500),maxOutputTokens:number(options,'maxOutputTokens',4_000,16,32_000),maxTotalTokens,maxCostUsd,pricing,requestTimeoutMs:number(options,'requestTimeoutMs',90_000,1_000,600_000)});
+    const runtime=new OpenAIResponsesRuntime({store,sandbox,...modelConfig,maxTurns:number(options,'maxTurns',20,1,100),maxToolCalls:number(options,'maxToolCalls',40,1,500),maxOutputTokens:number(options,'maxOutputTokens',4_000,16,32_000),maxTotalTokens,maxCostUsd,pricing,requestTimeoutMs:number(options,'requestTimeoutMs',90_000,1_000,600_000)});
     const evaluator=new ApprovedPlanEvaluator({store,sandbox});
     const task=await runTask(store,id,{runtime,evaluator,worktreeManager,repository,baseRef:options.baseRef??'HEAD',timeoutMs,leaseTtlMs:Math.min(3_600_000,timeoutMs+60_000),workerId:options.workerId??`cli-${process.pid}`});
     const report=store.report(id);
