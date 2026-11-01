@@ -60,4 +60,6 @@ jobs:
       - name: Pull pinned sandbox image
         run: docker pull node:24-bookworm-slim
       - name: Verify Docker sandbox isolation
+        env:
+          DEVOS_REQUIRE_DOCKER: '1'
         run: npm run test:sandbox

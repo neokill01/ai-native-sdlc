@@ -87,3 +87,14 @@ TaskStore 是可信内部领域模块，actor 和验证证据由调用者提供�
 - Issue #5（工具审计与交付报告）和 #6（Worktree、独占租约与恢复核对）已完成并关闭；PR #1 继续保持 Draft。
 
 当前未完成：OS Sandbox、真实模型/Coding Harness、真实任务评测、费用/Token 预算、强制进程终止、身份鉴权/API/CLI/控制台。P1 尚未结项。
+## 2026-11-01：同步远端基线与修复沙箱 CI
+
+本段覆盖前述过时的“尚无 CLI/模型适配器”状态：远端 c4f2c7c 已包含 Responses 适配器、CLI、模型调用预算和 DockerSandbox。适配器仍仅由模拟 API 测试验证，不能当作真实模型任务验收。
+
+- 核实 c4f2c7c 的 workflow 41152880435：evals 通过，agent-core 和 sandbox 失败，原因均为源码树凭据预检命中测试文件中的合成凭据。
+- 两个测试文件改为运行时拼接模拟凭据；测试执行时仍生成同样的敏感内容，继续验证拦截。扫描器策略没有放宽，没有排除测试目录。
+- 沙箱 CI 显式设置 DEVOS_REQUIRE_DOCKER=1；Docker 或镜像不可用时直接失败，防止因集成测试全部跳过而误报验收成功。
+- 本地：Node 测试 50 通过、0 失败、6 跳过（本容器没有 Docker）；语法检查通过；Python 门禁 6/6；Evals PASS=2 FAIL=0 REVIEW=1 SKIP=0。
+- 反向验证：本容器下 DEVOS_REQUIRE_DOCKER=1 的沙箱测试以非零退出，符合预期。真正 Docker 隔离测试以此次提交的远端 CI 为准。
+
+待完成：真实模型凭据/运行环境、至少 10 项真实任务评测、跨修复轮次和重启的累计预算、审批者与编码执行器的身份隔离、最终验收。当前宿主未配置 OPENAI_API_KEY/DEVOS_OPENAI_MODEL，不尝试付费真实模型调用。PR 保持 Draft。

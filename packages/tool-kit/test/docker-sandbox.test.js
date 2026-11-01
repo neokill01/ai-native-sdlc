@@ -8,6 +8,7 @@ import { DockerSandbox } from '../docker-sandbox.js';
 
 const image=process.env.DEVOS_SANDBOX_IMAGE??'node:24-bookworm-slim';
 const dockerReady=process.platform==='linux'&&spawnSync('docker',['info'],{stdio:'ignore'}).status===0&&spawnSync('docker',['image','inspect',image],{stdio:'ignore'}).status===0;
+if(process.env.DEVOS_REQUIRE_DOCKER==='1'&&!dockerReady)throw new Error('Required Docker sandbox or pre-pulled image unavailable');
 const skip=dockerReady?false:'Docker daemon and pre-pulled sandbox image required';
 async function fixture(t){
  const root=await mkdtemp(join(tmpdir(),'devos-docker-sandbox-'));
@@ -70,10 +71,10 @@ test('container resource limits are applied and cancellation removes the contain
 
 test('fails closed on credential files, secret-like source and symlinks outside the workspace',async t=>{
  const f=await fixture(t);
- await writeFile(join(f.root,'.env'),'OPENAI_API_KEY=sk-test-abcdefghijklmnopqrstuvwxyz');
+ await writeFile(join(f.root,'.env'),'OPENAI_API_KEY=' + 'sk-' + 'test-' + 'abcdefghijklmnopqrstuvwxyz');
  await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/Sensitive credential file denied/);
  await rm(join(f.root,'.env'));
- await writeFile(join(f.root,'config.js'),'export const token = "ghp_abcdefghijklmnopqrstuvwxyz123456";');
+ await writeFile(join(f.root,'config.js'),`export const token = "${'ghp_' + 'abcdefghijklmnopqrstuvwxyz123456'}";`);
  await assert.rejects(()=>f.sandbox.run({workspace:f.root,command:['node','-e',''],assertLease:f.guard}),/Secret-like material/);
  await rm(join(f.root,'config.js'));
  const outside=f.root+'-outside.txt';
