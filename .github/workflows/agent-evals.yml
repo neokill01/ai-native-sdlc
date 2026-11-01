@@ -14,6 +14,8 @@ on:
       - 'evals/**'
       - 'tests/**'
       - 'packages/**'
+      - 'apps/**'
+      - 'package-lock.json'
       - 'package.json'
       - '.github/workflows/agent-evals.yml'
       - 'docs/playbook.md'
@@ -63,3 +65,22 @@ jobs:
         env:
           DEVOS_REQUIRE_DOCKER: '1'
         run: npm run test:sandbox
+
+  console:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install locked workspace dependencies
+        run: npm ci
+      - name: Build React console and test API
+        run: npm run build:console && npm run test:console
+      - name: Install browser for console integration test
+        run: npx playwright install --with-deps chromium --only-shell
+      - name: Test browser task workflow
+        run: npm run test:console:e2e

@@ -9,3 +9,8 @@ node_modules/
 
 __pycache__/
 *.py[cod]
+
+# DevOS console runtime and builds
+.devos/
+apps/console/dist/
+*.tsbuildinfo
