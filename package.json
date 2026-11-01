@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -18,7 +19,13 @@
     "report": "node packages/agent-core/report-cli.js",
     "test:sandbox": "node --test packages/tool-kit/test/docker-sandbox.test.js",
     "devos": "node packages/agent-core/cli.js",
-    "preflight": "python3 scripts/server-preflight.py"
+    "preflight": "python3 scripts/server-preflight.py",
+    "dev:console": "npm run dev --workspace @devos/console",
+    "dev:api": "npm start --workspace @devos/api",
+    "build:console": "npm run build --workspace @devos/console",
+    "start:console": "node apps/api/server.js",
+    "test:console": "node --test apps/api/test/*.test.js",
+    "test:console:e2e": "npm run test:e2e --workspace @devos/console"
   },
   "bin": {
     "devos": "packages/agent-core/cli.js"

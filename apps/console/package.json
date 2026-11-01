@@ -1,0 +1,23 @@
+{
+  "name": "@devos/console",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "build": "tsc -b && vite build",
+    "test:e2e": "node --test test/browser.test.js"
+  },
+  "dependencies": {
+    "lucide-react": "0.468.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.16",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "@playwright/test": "1.56.1"
+  }
+}

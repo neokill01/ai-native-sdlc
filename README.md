@@ -51,3 +51,16 @@ AINative/
 - [x] 台阶 4：转译为 DSH agent preset（`ai-native-sdlc`，见 `docs/dsh-preset.md`）
 
 > 基于 Anthropic Applied AI 团队的真实最佳实践改编；本仓库聚焦"方法论 + 门禁 + 产物"，具体工具映射见 `docs/playbook.md` 第 4 节。
+
+
+## DevOS 网页管理端（Mock MVP）
+
+新增 React + TypeScript + Vite 管理台和 Node.js API，复用任务状态机、审批、租约、执行证据与报告。无模型 Key 也能演练完整流程。
+
+```bash
+npm ci
+npm run build:console
+npm run start:console
+```
+
+在本机打开 http://127.0.0.1:3001 。当前为本地单用户 Mock 模式，不修改关联业务仓库；不要直接公开接口到公网。详见 [管理端运行说明](docs/devos/09-react-vite-console.md)。
