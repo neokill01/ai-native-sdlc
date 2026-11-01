@@ -78,6 +78,17 @@ ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列
 
 ## CLI
 
+### 使用方式与交付边界
+
+当前入口是单机命令行，尚无网页控制台。运行环境为 Linux、Node 24、Git 和可用的 Docker；模型执行还需宿主提供有效的 OPENAI_API_KEY 与模型名称。可以先运行 demo:loop 熟悉状态流，该演示不调用真实模型。
+
+一次任务依次提交 intent（需求目标）、spec（范围与验收标准）、plan（执行计划及验证命令），每阶段由操作者审批。计划批准后，run 创建业务仓库的独立工作树，模型读写文件并在沙箱内执行命令，验证失败时在预算内修复。运行后通过 status 与 report 查看状态、测试证据和累计模型用量，再审查工作树中的 diff。
+
+任务完成不等于业务验收完成，也不会自动提交、推送、创建 PR、合并或部署。上述交付动作仍由操作者审查后执行。命令沙箱默认无网络，真实项目所需依赖与工具必须提前准备；当前默认 Node 镜像不代表已经兼容所有前端项目。至少十项真实模型任务的最终验收仍待完成。
+
+下列 TASK_ID 是 create 输出的任务 ID；intent.md、spec.md、plan.json 是操作者准备的输入文件。将 repository 指向要修改的业务 Git 仓库，worktree-root 指向仓库外的专用目录。
+
+
 在 Linux 主机安装 Node 24 与 Docker，预先拉取 sandbox image。设置 OPENAI_API_KEY 和 DEVOS_OPENAI_MODEL 后：
 
 ```bash
@@ -85,9 +96,9 @@ npm run devos -- create --db .devos/tasks.sqlite --title "Add a feature"
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind intent --file ./intent.md
 npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind spec --file ./spec.md
-npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID
 npm run devos -- artifact --db .devos/tasks.sqlite --task TASK_ID --kind plan --file ./plan.json
-npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID --actor operator
+npm run devos -- approve --db .devos/tasks.sqlite --task TASK_ID
 npm run devos -- run --db .devos/tasks.sqlite --task TASK_ID --repository "$PWD" --worktree-root "$HOME/.devos/worktrees" --max-total-tokens 50000
 npm run devos -- status --db .devos/tasks.sqlite --task TASK_ID
 npm run devos -- report --db .devos/tasks.sqlite --task TASK_ID
