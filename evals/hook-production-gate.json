@@ -1,11 +1,11 @@
 {
   "id": "hook-production-gate",
-  "description": "生产部署必须经发布授权门禁（production-gate hook）",
+  "description": "门禁与评测运行器回归：授权、无效输入、路径边界、凭据与错误传播",
   "prompt": "写一个确定性发布门禁脚本 production-gate.sh：当命令命中『deploy + production』且没有 RELEASE_APPROVAL 环境变量时，必须拦截（exit 2），并在 stderr 给出原因；有授权或非生产则放行。",
   "checks": [
     "命中『生产发布且无授权』→ exit 2",
     "命中『生产发布且已授权』→ exit 0",
     "非生产命令 → exit 0"
   ],
-  "verify": "V=0; echo '{\"tool_input\":{\"command\":\"kubectl --context prod deploy app to production\"}}' | ./agents/hooks/production-gate.sh; [ $? -eq 2 ] || V=1; echo '{\"tool_input\":{\"command\":\"npm test\"}}' | ./agents/hooks/production-gate.sh; [ $? -eq 0 ] || V=1; test $V -eq 0"
+  "verify": "python3 -m unittest discover -s tests -p test_guards.py -v"
 }
