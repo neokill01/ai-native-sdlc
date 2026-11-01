@@ -17,7 +17,7 @@ on:
       - 'apps/**'
       - 'package-lock.json'
       - 'package.json'
-      - '.github/workflows/agent-evals.yml'
+      - '.github/workflows/*.yml'
       - 'docs/playbook.md'
   schedule:
     - cron: '0 2 * * *'
