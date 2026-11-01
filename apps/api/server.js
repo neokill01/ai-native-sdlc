@@ -388,9 +388,13 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
+  const port = Number(process.env.DEVOS_PORT || 3001);
+  if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) {
+    throw new Error("DEVOS_PORT must be an integer between 1024 and 65535");
+  }
   const app = createConsole();
-  app.server.listen(3001, "127.0.0.1", () =>
-    console.log("DevOS console: http://127.0.0.1:3001 (mock, local only)"),
+  app.server.listen(port, "127.0.0.1", () =>
+    console.log(`DevOS console: http://127.0.0.1:${port} (mock, local only)`),
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.once(signal, () => app.close().then(() => process.exit()));
