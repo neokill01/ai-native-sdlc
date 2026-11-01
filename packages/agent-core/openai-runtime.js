@@ -41,7 +41,8 @@ export class OpenAIResponsesRuntime {
     if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('OPENAI_API_KEY is required');
     if (typeof model !== 'string' || !model.trim() || model.length > 128) throw new Error('DEVOS_OPENAI_MODEL is required');
     const endpoint = new URL(baseUrl);
-    if (endpoint.protocol !== 'https:' || endpoint.pathname !== '/v1/responses') throw new Error('Responses endpoint must use HTTPS');
+    if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash ||
+      !(endpoint.pathname === '/v1/responses' || (endpoint.hostname === 'api.deepseek.com' && endpoint.pathname === '/responses'))) throw new Error('Responses endpoint must use HTTPS');
     if (typeof fetchImpl !== 'function') throw new Error('Fetch implementation required');
     if (!Number.isSafeInteger(maxTurns) || maxTurns < 1 || maxTurns > 100 ||
         !Number.isSafeInteger(maxToolCalls) || maxToolCalls < 1 || maxToolCalls > 500 ||
@@ -75,7 +76,7 @@ export class OpenAIResponsesRuntime {
       });
       if (!response.ok) {
         const requestId = response.headers?.get?.('x-request-id');
-        throw new Error(`OpenAI Responses API HTTP ${response.status}${requestId ? ` (request ${requestId})` : ''}`);
+        throw new Error(`Model Responses API HTTP ${response.status}${requestId ? ` (request ${requestId})` : ''}`);
       }
       const data = await response.json();
       if (!isObject(data) || !Array.isArray(data.output)) throw new Error('Invalid Responses API payload');
