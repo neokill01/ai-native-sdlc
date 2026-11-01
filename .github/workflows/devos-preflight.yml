@@ -1,0 +1,45 @@
+name: DevOS server preflight
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require deployment credentials in this repository
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_SSH_KEY" ]; then
+            echo '::error::Configure SERVER_HOST and SERVER_SSH_KEY in ai-native-sdlc Actions secrets before running this workflow.'
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+      - name: Check existing server resources without modifying services
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -T 10 -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "ubuntu@$SERVER_HOST" 'python3 -' <<'PY'
+          import json,os,platform,shutil,socket,subprocess
+          def probe(args):
+            try:
+              r=subprocess.run(args,capture_output=True,text=True,timeout=10)
+              return r.stdout.strip() if r.returncode==0 else None
+            except Exception:return None
+          memory={}
+          with open('/proc/meminfo') as f:
+            for line in f:
+              if line.startswith(('MemTotal:','MemAvailable:')):memory[line.split(':')[0]]=int(line.split()[1])//1024
+          sock=socket.socket();sock.settimeout(1)
+          occupied=sock.connect_ex(('127.0.0.1',4317))==0;sock.close()
+          report={'os':platform.system(),'architecture':platform.machine(),'cpuCount':os.cpu_count(),'loadAverage':os.getloadavg(),'memoryMiB':memory,'diskFreeGiB':round(shutil.disk_usage('/var/lib').free/(1024**3),2),'nodeVersion':probe(['node','--version']),'glibc':platform.libc_ver(),'systemdAvailable':shutil.which('systemctl') is not None,'port4317Occupied':occupied,'serviceExists':probe(['systemctl','show','agentic-devos.service','--property=LoadState','--value'])=='loaded','sudoNoninteractive':subprocess.run(['sudo','-n','true'],capture_output=True).returncode==0}
+          print(json.dumps(report))
+          PY

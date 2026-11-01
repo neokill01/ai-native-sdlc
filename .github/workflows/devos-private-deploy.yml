@@ -1,0 +1,200 @@
+name: Deploy DevOS private console
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/devos-private-deploy.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: devos-private-deployment
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Require deployment credentials in this repository
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_SSH_KEY" ]; then
+            echo '::error::Configure SERVER_HOST and SERVER_SSH_KEY in ai-native-sdlc Actions secrets before running this workflow.'
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          path: devos
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build and validate this repository commit
+        working-directory: devos
+        run: npm ci && npm run build:console && npm run test:console
+      - name: Package the application without uploading the large runtime
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/devos-release"
+          mkdir -p "$stage/apps/api" "$stage/apps/console" "$stage/packages/agent-core" "$stage/packages/tool-kit"
+          cp devos/package.json "$stage/package.json"
+          cp devos/apps/api/server.js devos/apps/api/package.json "$stage/apps/api/"
+          cp -r devos/apps/console/dist "$stage/apps/console/"
+          cp devos/packages/agent-core/*.js "$stage/packages/agent-core/"
+          cp devos/packages/tool-kit/*.js "$stage/packages/tool-kit/"
+          printf '%s\n' "$GITHUB_SHA" > "$stage/RELEASE_COMMIT"
+          tar -C "$stage" -czf "$RUNNER_TEMP/devos-release.tgz" .
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_SSH_KEY }}
+      - name: Install an independent private service and verify it
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          ssh-keyscan -T 10 -H "$SERVER_HOST" >> ~/.ssh/known_hosts
+          release="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          checksum=$(sha256sum "$RUNNER_TEMP/devos-release.tgz" | cut -d ' ' -f 1)
+          scp -o BatchMode=yes -o ConnectTimeout=15 "$RUNNER_TEMP/devos-release.tgz" "ubuntu@$SERVER_HOST:/tmp/agentic-devos-$release.tgz"
+          ssh -o BatchMode=yes -o ConnectTimeout=15 "ubuntu@$SERVER_HOST" "sudo -n bash -s -- $release $checksum" <<'REMOTE'
+          set -euo pipefail
+          release="$1"; checksum="$2"
+          [[ "$release" =~ ^[0-9]+-[0-9]+$ && "$checksum" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          archive="/tmp/agentic-devos-$release.tgz"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum -c - >/dev/null
+          [ "$(uname -m)" = x86_64 ] || { echo 'Unsupported server architecture'; exit 1; }
+          python3 - <<'PY'
+          import shutil
+          memory={}
+          for line in open('/proc/meminfo'):
+            if line.startswith('MemAvailable:'):memory['available']=int(line.split()[1])//1024
+          assert memory.get('available',0)>=512,'Insufficient currently available RAM'
+          assert shutil.disk_usage('/opt').free>=1024**3,'Insufficient currently available disk'
+          PY
+          if ss -H -ltn 'sport = :4317' | grep -q .; then
+            systemctl is-active --quiet agentic-devos || { echo 'Dedicated port occupied by another service'; exit 1; }
+          fi
+          base=/opt/agentic-devos
+          data=/var/lib/agentic-devos
+          unit=/etc/systemd/system/agentic-devos.service
+          if [ -e "$unit" ]; then
+            grep -q '^# Managed by Agentic DevOS private deployment$' "$unit" || { echo 'Refusing to replace an unrelated service'; exit 1; }
+          fi
+          if id agentic-devos >/dev/null 2>&1; then
+            [ "$(getent passwd agentic-devos | cut -d: -f6)" = "$data" ] || { echo 'Service account name conflict'; exit 1; }
+          else
+            useradd --system --home-dir "$data" --shell /usr/sbin/nologin agentic-devos
+          fi
+          install -d -m 755 "$base/releases" "$base/backups"
+          install -d -o agentic-devos -g agentic-devos -m 700 "$data"
+          # Fetch the official compressed runtime on the server; never replace system Node.
+          runtime_name=node-v24.22.2-linux-x64
+          runtime_sha=48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75
+          runtime_cache="$base/runtime-cache"
+          install -d -m 755 "$runtime_cache"
+          if [ ! -x "$runtime_cache/$runtime_name/bin/node" ]; then
+            curl --fail --location --silent --show-error --connect-timeout 15 --max-time 240 --retry 1 \
+              "https://nodejs.org/dist/v24.22.2/$runtime_name.tar.xz" -o "$runtime_cache/$runtime_name.tar.xz"
+            printf '%s  %s\n' "$runtime_sha" "$runtime_cache/$runtime_name.tar.xz" | sha256sum -c - >/dev/null
+            runtime_stage=$(mktemp -d "$runtime_cache/.extract.XXXXXX")
+            tar --no-same-owner -xJf "$runtime_cache/$runtime_name.tar.xz" -C "$runtime_stage"
+            mv "$runtime_stage/$runtime_name" "$runtime_cache/$runtime_name"
+            rmdir "$runtime_stage"
+          fi
+          target="$base/releases/$release"
+          [ ! -e "$target" ] || { echo 'Release already exists'; exit 1; }
+          install -d -m 755 "$target"
+          tar --no-same-owner -xzf "$archive" -C "$target"
+          ln -s "$runtime_cache/$runtime_name" "$target/runtime"
+          "$target/runtime/bin/node" -e 'if(Number(process.versions.node.split(".")[0])!==24)process.exit(1)'
+          previous=$(readlink "$base/current" || true)
+          had_unit=false
+          if [ -f "$unit" ]; then cp "$unit" "$base/backups/$release.service"; had_unit=true; fi
+          rollback() {
+            trap - ERR HUP INT TERM
+            echo 'Verification failed; restoring previous private service'
+            systemctl stop agentic-devos || true
+            if [ "$had_unit" = true ]; then cp "$base/backups/$release.service" "$unit"; else rm -f "$unit"; fi
+            if [ -n "$previous" ]; then ln -sfn "$previous" "$base/current"; else rm -f "$base/current"; fi
+            systemctl daemon-reload
+            if [ -n "$previous" ]; then systemctl restart agentic-devos || true; else systemctl disable agentic-devos >/dev/null 2>&1 || true; fi
+            rm -f "$archive"
+            exit 1
+          }
+          trap rollback ERR HUP INT TERM
+          cat > "$unit" <<'UNIT'
+          # Managed by Agentic DevOS private deployment
+          [Unit]
+          Description=Agentic DevOS private mock console
+          After=network.target
+          [Service]
+          Type=simple
+          User=agentic-devos
+          Group=agentic-devos
+          WorkingDirectory=/opt/agentic-devos/current
+          ExecStart=/opt/agentic-devos/current/runtime/bin/node --preserve-symlinks-main /opt/agentic-devos/current/apps/api/server.js
+          Environment=NODE_ENV=production
+          Environment=DEVOS_PORT=4317
+          Environment=DEVOS_DATA_DIR=/var/lib/agentic-devos
+          Restart=on-failure
+          RestartSec=3
+          TimeoutStopSec=15
+          KillMode=control-group
+          UMask=0077
+          NoNewPrivileges=true
+          PrivateTmp=true
+          PrivateDevices=true
+          ProtectSystem=strict
+          ProtectHome=true
+          ReadWritePaths=/var/lib/agentic-devos
+          MemoryMax=384M
+          CPUQuota=50%
+          TasksMax=64
+          [Install]
+          WantedBy=multi-user.target
+          UNIT
+          ln -sfn "$target" "$base/current"
+          systemctl daemon-reload
+          systemctl restart agentic-devos
+          python3 - <<'PY'
+          import json,time,urllib.request,urllib.error,subprocess
+          base='http://127.0.0.1:4317'
+          session=None
+          for i in range(30):
+            try:
+              session=json.load(urllib.request.urlopen(base+'/api/session',timeout=2));break
+            except Exception:time.sleep(1)
+          assert session and session['mode']=='mock','Private console failed to become ready'
+          token=session['token']
+          def call(path,body=None):
+            payload=None if body is None else json.dumps(body).encode()
+            req=urllib.request.Request(base+'/api'+path,data=payload,headers={'Content-Type':'application/json','X-Devos-Token':token})
+            with urllib.request.urlopen(req,timeout=5) as r:return json.load(r)
+          page=urllib.request.urlopen(base+'/',timeout=5).read().decode()
+          assert 'Agentic DevOS' in page,'Built React entry is missing'
+          try:urllib.request.urlopen(base+'/api/tasks',timeout=5);raise AssertionError('Unauthenticated read unexpectedly allowed')
+          except urllib.error.HTTPError as e:assert e.code==403
+          task=call('/tasks',{'title':'部署自检 · 固定 Mock 样例','description':'自动化部署验证，仅审批固定样例，不代表真实业务需求验收。','projectId':'devos'})
+          for i in range(3):task=call('/tasks/'+task['id']+'/approve',{'version':task['version']})
+          task=call('/tasks/'+task['id']+'/run',{'version':task['version']})
+          for i in range(60):
+            task=call('/tasks/'+task['id'])
+            if not task['active'] and task['status']=='completed':break
+            time.sleep(1)
+          assert task['status']=='completed' and task['verification']=='passed','Mock execution failed'
+          report=call('/tasks/'+task['id']+'/report')
+          exits=[x['record']['exitCode'] for x in report['tools'] if x['record']['tool']=='command']
+          assert exits==[1,0] and task['repairs']==1,'Repair evidence mismatch'
+          assert report['acceptance']=='needs_human_review'
+          listening=subprocess.check_output(['ss','-H','-ltn','sport = :4317'],text=True)
+          assert '127.0.0.1:4317' in listening and '0.0.0.0:4317' not in listening
+          print(json.dumps({'deployment':'private_console_verified','service':'agentic-devos','loopbackPort':4317,'taskStatus':task['status'],'repairs':task['repairs'],'commandExitCodes':exits,'modelCalls':0,'acceptance':report['acceptance']}))
+          PY
+          systemctl enable agentic-devos >/dev/null 2>&1
+          trap - ERR HUP INT TERM
+          rm -f "$archive"
+          printf 'Private console release %s is active. Existing website and system Node unchanged.\n' "$release"
+          REMOTE
