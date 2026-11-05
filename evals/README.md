@@ -32,7 +32,7 @@
 
 ## 何时触发
 
-- **PR 门禁**：改动 `AGENT.md`、`agents/**`、`evals/**`、`docs/playbook.md` 时在 CI 跑（见 `.github/workflows/agent-evals.yml`）。
+- **PR 门禁**：路径过滤覆盖 Agent 配置、核心/API/前端、测试、依赖与工作流等，完整规则以 `.github/workflows/agent-evals.yml` 为准；不是所有普通文档变化都会触发。
 - **定时**：cron 例行回归，agent 配置一变就能发现问题。
 - **事故后**：新生产事故 → 新增对应 eval，永久回归。
 

@@ -1,4 +1,6 @@
-# Agent Core 原型
+# Agent Core · 单机执行核心
+
+核对日期：2026-11-05。当前架构见[当前实现](../../docs/devos/00-文档导航与现状审计.md)，运行与排障见[运行指南](../../docs/knowledge/operations.md)。
 
 Node 24，无第三方依赖。仓库根目录执行：
 
@@ -25,7 +27,7 @@ npm run demo:loop
 执行器通过 SQLite 原子租约串行化同一任务；租约包含递增 fencing token、过期时间和续租事件。每次状态写入/工具证据写入可携带租约，旧 fencing token 或过期租约会被拒绝。`runTask` 自动申请租约并定期续租，退出时释放；进程崩溃后等待 TTL 到期再允许接管。租约是单数据库实例内的并发控制，不是跨主机高可用分布式锁。
 适配器不遵守 AbortSignal 时，循环能停止等待，但不能强杀其外部副作用；接入真实工具前必须由沙箱/进程管理层实现强制终止。
 
-不确定操作暂停后仍需人工核对和恢复入口，当前未提供 reconciliation API。失败原因分类、费用预算、结构化命令证据、鉴权、审查和真实 Harness 接入尚未实现。
+已提供 resolvePending、CLI resolve 和网页 Mock 人工核对入口，结构化命令证据、失败原因与累计模型预算也已实现。仍未实现多用户鉴权、独立审批身份、后台自动恢复调度与真实模型任务最终验收。
 SQLite 审批事件已包含 actor、产物类别和哈希，但完整不可变审计服务与身份校验仍未实现。
 
 ## 持久化证据与报告
@@ -43,14 +45,14 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 
 验证器自由文本只存 SHA-256，不持久化正文。此约束针对本版本新写入的验证与工具证据，不追溯清除旧数据库中的历史自由文本。任务/产物文本仍是原有可信入口，未实现通用秘密检测或凭据保管服务。
 
-本轮已补充失败原因枚举、报告与元数据持久化；进程执行强制隔离、Git Worktree 生命周期管理及不确定操作核对入口仍未完成。租约数据库依赖 SQLite 所在主机的文件系统语义。SQLite 可被宿主管理员修改，不是防篡改存储。
+失败原因、元数据报告、Git Worktree 生命周期、不确定操作核对和 Docker 命令隔离已实现；指定宿主的隔离有效性仍需实际运行 Docker 集成测试。租约数据库依赖 SQLite 所在主机的文件系统语义。SQLite 可被宿主管理员修改，不是防篡改存储。
 
 
 ## Worker 租约与 fencing
 
 `runTask(store, taskId, { runtime, evaluator, workerId, timeoutMs, leaseTtlMs, signal })` 自动获取任务租约。Runtime 和 evaluator 会收到 `lease`；工具网关应在每次读/写/命令前调用 `store.assertLease(taskId, lease)`，并在写入工具证据时传入 `store.recordTool(taskId, attempt, record, lease)`。状态、检查点和验证写入也支持携带 lease。旧 worker 的 fencing token 不能覆盖新 worker 的任务状态。进程崩溃后租约自然过期；pending 外部副作用仍需核对，绝不自动重放。
 
-租约只在同一 SQLite 数据库上提供原子互斥；它不替代 OS 沙箱，也不能阻止绕过工具网关的进程直接写文件。当前 Worktree 生命周期与回收仍待实现。
+租约只在同一 SQLite 数据库上提供原子互斥；它不替代 OS 沙箱，也不能阻止绕过工具网关的进程直接写文件。Worktree 生命周期已实现，见下节；不自动丢弃未提交修改。
 
 
 ## Git Worktree 隔离与恢复
@@ -64,23 +66,23 @@ npm run report -- --db /path/tasks.db --report REPORT_ID
 ## 不确定操作人工核对
 
 
-`runTask` 遇到 `checkpoint.operation=pending` 时会暂停，不会自动重放。可信审批入口可调用 `store.resolvePending(taskId, version, { actor, decision, evidence })`：`completed` 表示人工确认外部副作用已完成，恢复后直接进入验证；`not_executed` 表示人工确认未执行，恢复后允许使用原任务/修复轮次的稳定 operationKey 重新执行。系统只保存核对证据的 SHA-256，不保存自由文本。该入口必须由后续 API 层做身份认证与授权，不能直接暴露给未认证调用者。
+`runTask` 遇到 `checkpoint.operation=pending` 时会暂停，不会自动重放。可信审批入口可调用 `store.resolvePending(taskId, version, { actor, decision, evidence })`：`completed` 表示人工确认外部副作用已完成，恢复后直接进入验证；`not_executed` 表示人工确认未执行，恢复后允许使用原任务/修复轮次的稳定 operationKey 重新执行。系统只保存核对证据的 SHA-256，不保存自由文本。CLI 以 OS 用户/UID 记录操作者；当前网页入口只覆盖单用户 Mock 会话。将来对外提供真实任务 API 时仍须增加身份认证与授权，不能直接暴露内部方法。
 
 
 ## 真实模型 Runtime（Responses API）
 
-OpenAIResponsesRuntime 使用官方 Responses API function calling。API Key 仅从宿主进程的 OPENAI_API_KEY 读取，通过 HTTPS Bearer 认证；不会写入任务库、工具输出或 Docker 容器环境。模型通过 list_files/read_file/write_file/run_command 四个严格 schema 工具工作；文件工具受工作区路径与当前 lease 约束，命令只在 DockerSandbox 内运行。每轮请求设置 store=false，并把前一响应的全部 output items（包括 reasoning/tool-call items）与 function_call_output 回传，避免丢失上下文。
+OpenAIResponsesRuntime 使用官方 Responses API function calling。CLI 通过 providerConfig 选择宿主进程中的 OPENAI_API_KEY 或 DEEPSEEK_API_KEY，经 HTTPS Bearer 认证；不会写入任务库、工具输出或 Docker 容器环境。模型通过 list_files/read_file/write_file/run_command 四个严格 schema 工具工作；文件工具受工作区路径与当前 lease 约束，命令只在 DockerSandbox 内运行。每轮请求设置 store=false，并把前一响应的全部 output items（包括 reasoning/tool-call items）与 function_call_output 回传，避免丢失上下文。
 
-生产配置需显式提供 DEVOS_OPENAI_MODEL；可配置 maxTurns、maxToolCalls、maxTotalTokens、maxOutputTokens。若设置 maxCostUsd，必须同时提供当前模型的 input/output 每百万 token 价格，系统不会猜测价格。model.usage 事件仅保存模型名、token 数和估算费用，不保存 API Key 或原始响应正文。
+OpenAI 配置提供 DEVOS_OPENAI_MODEL，DeepSeek 配置提供 DEVOS_DEEPSEEK_MODEL，也可用 --model 指定；可配置 maxTurns、maxToolCalls、maxTotalTokens、maxOutputTokens。若设置 maxCostUsd，必须同时提供当前模型的 input/output 每百万 token 价格，系统不会猜测价格。model.usage 事件仅保存模型名、token 数和估算费用，不保存 API Key 或原始响应正文。
 
-ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列表，独立在 DockerSandbox 运行；未配置验证命令不能通过验收。真实 API 调用需要宿主环境提供 OPENAI_API_KEY 与模型访问权限；ChatGPT 订阅不自动等于 API 额度。此版本通过 mock Responses API 做协议/工具流测试，尚未使用真实 API Key 完成端到端模型任务。
+ApprovedPlanEvaluator 只执行已批准 plan JSON 中 verification.commands 列表，独立在 DockerSandbox 运行；未配置验证命令不能通过验收。真实 API 调用需要宿主提供所选供应商 Key 与模型访问权限；ChatGPT 订阅不自动等于 API 额度。此版本通过 mock Responses API 做协议/工具流测试，尚未使用真实 API Key 完成端到端模型任务。
 
 
 ## CLI
 
 ### 使用方式与交付边界
 
-当前入口是单机命令行，尚无网页控制台。运行环境为 Linux、Node 24、Git 和可用的 Docker；模型执行还需宿主提供有效的 OPENAI_API_KEY 与模型名称。可以先运行 demo:loop 熟悉状态流，该演示不调用真实模型。
+真实模型执行入口是单机命令行；网页/API 已有独立的 Mock MVP，尚不能运行真实业务任务。CLI 运行环境为 Linux、Node 24、Git 和可用的 Docker；模型执行还需宿主提供所选供应商的有效 API Key 与模型名称。可以先运行 demo:loop 熟悉状态流，该演示不调用真实模型。
 
 一次任务依次提交 intent（需求目标）、spec（范围与验收标准）、plan（执行计划及验证命令），每阶段由操作者审批。计划批准后，run 创建业务仓库的独立工作树，模型读写文件并在沙箱内执行命令，验证失败时在预算内修复。运行后通过 status 与 report 查看状态、测试证据和累计模型用量，再审查工作树中的 diff。
 
@@ -117,3 +119,9 @@ Plan artifact 必须是 JSON，并提供已审批的 verification.commands，例
 模型响应缺失用量、用量字段无效，或请求中断且未获得用量时，拒绝执行响应中的工具，也拒绝自动重新请求。该状态需要运维核对供应商计费后处理，目前没有自动清账或重置入口。可信内部事件记录仍不等于防篡改账单。
 
 费用与 Token 上限是在获取本次 API 响应用量后停止后续请求/工具，**不是供应商账单的硬上限**：输入 Token 和中断请求的实际计费可能超出剩余额度。需要硬性支出上限时还需供应商账户限额或保守的请求前额度预留；未将此项标记为最终验收完成。
+
+## DeepSeek 与网页入口
+
+CLI 可指定 `--provider deepseek`，使用 `DEEPSEEK_API_KEY` 和 `DEVOS_DEEPSEEK_MODEL`；默认 provider 取 `DEVOS_PROVIDER` 或 openai，不自动回退。端点定义见 `providers.js`，真实供应商兼容性仍需实际任务验证。
+
+网页通过 `npm run build:console`、`npm run start:console` 启动，默认 `http://127.0.0.1:3001`。它使用 `.devos/console/tasks.sqlite` 与固定样例目录，不导入 CLI 历史任务、不创建业务 Worktree、不调用模型。完整 API 见[接口说明](../../docs/devos/03-核心流程与接口契约.md)。
