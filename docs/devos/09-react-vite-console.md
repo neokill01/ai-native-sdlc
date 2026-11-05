@@ -1,5 +1,7 @@
 # React + Vite 工程管理端 · Mock MVP
 
+2026-11-05 已按当前 API 与前端核对。完整接口见[流程与契约](03-核心流程与接口契约.md)，本次验证与历史证据区分见[开发指南](../knowledge/development.md)。
+
 ## 当前交付
 
 - React 19 + TypeScript 严格检查 + Vite 8；Node 24 HTTP API；SQLite 复用原 TaskStore。
@@ -63,7 +65,7 @@ npx playwright install chromium --only-shell
 npm run test:console:e2e     # 完整网页流程（需 Chromium 运行依赖）
 ```
 
-本地证据：核心测试 57 通过、6 Docker 跳过；5 项 API 集成通过；1 项完整浏览器场景通过，覆盖编辑/审批、关闭页面后继续执行、重开报告、真实失败/修复证据和手机布局。6 项 Python 门禁通过；既有 Evals 为 PASS=2 FAIL=0 REVIEW=1。报告中的 API 安全清单仍待审查，不标为通过。
+历史交付验证记录（非本次重跑）：核心测试 57 通过、6 Docker 跳过；5 项 API 集成通过；1 项完整浏览器场景通过，覆盖编辑/审批、关闭页面后继续执行、重开报告、真实失败/修复证据和手机布局。6 项 Python 门禁通过；既有 Evals 为 PASS=2 FAIL=0 REVIEW=1。报告中的 API 安全清单仍待审查，不标为通过。
 
 后续范围：先让用户体验并校准此管理流程，再评估工作区 Diff、真实模型执行、身份隔离与腾讯云独立部署；当前不标记整个 Agentic DevOS 项目结项。
 
